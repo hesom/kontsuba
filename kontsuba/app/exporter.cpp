@@ -103,7 +103,7 @@ void exportScene(const aiScene* scene, const std::string& path)
 
     auto emitterNode = doc.NewElement("emitter");
     emitterNode->SetAttribute("type", "point");
-    auto intensityNode = constructNode(doc, "rgb", "intensity", "100");
+    auto intensityNode = constructNode(doc, "rgb", "intensity", "10");
     emitterNode->InsertEndChild(intensityNode);
     auto positionNode = constructNode(doc, "point", "position", "2, 2, 2");
     emitterNode->InsertEndChild(positionNode);
@@ -157,6 +157,8 @@ void exportScene(const aiScene* scene, const std::string& path)
             specularFactor = 0.5f;
         }
 
+        auto twoSidedNode = doc.NewElement("bsdf");
+        twoSidedNode->SetAttribute("type", "twosided");
         auto materialNode = doc.NewElement("bsdf");
         materialNode->SetAttribute("type", "principled");
         materialNode->SetAttribute("id", name.C_Str());
@@ -176,8 +178,8 @@ void exportScene(const aiScene* scene, const std::string& path)
         materialNode->InsertEndChild(clearCoatNode);
         auto clearCoatRoughnessNode = constructNode(doc, "float", "clearcoat_gloss", std::to_string(clearCoatRoughness));
         materialNode->InsertEndChild(clearCoatRoughnessNode);
-
-        root->InsertEndChild(materialNode);
+        twoSidedNode->InsertEndChild(materialNode);
+        root->InsertEndChild(twoSidedNode);
     }
 
     // loop over all meshes in scene
