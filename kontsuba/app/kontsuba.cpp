@@ -19,8 +19,9 @@ int main(int argc, char const *argv[])
     const aiScene* scene = importer.ReadFile(path,
     aiProcess_CalcTangentSpace      |
     aiProcess_Triangulate           |
-    //aiProcess_JoinIdenticalVertices |
+    aiProcess_JoinIdenticalVertices |
     aiProcess_FindDegenerates       |
+    aiProcess_FixInfacingNormals    |
     aiProcess_SortByPType);
 
     if(!scene){
