@@ -6,12 +6,33 @@
 #include <assimp/SceneCombiner.h>
 #include <tinyply.h>
 #include <filesystem>
+#include <optional>
+#include <random>
 
 auto constructNode(tinyxml2::XMLDocument& doc, const std::string& type, const std::string name, const std::string& value){
     tinyxml2::XMLElement* node = doc.NewElement(type.c_str());
     node->SetAttribute("name", name.c_str());
     node->SetAttribute("value", value.c_str());
     return node;
+}
+
+auto probeMaterialTexture(const aiMaterial* material, aiTextureType type){
+    aiString path;
+    if(material->GetTextureCount(type) != 0){
+        if(material->GetTexture(type, 0, &path) == aiReturn_SUCCESS){
+            return std::optional<std::string>(path.C_Str());
+        }
+    }
+    return std::optional<std::string>();
+}
+
+template<typename T>
+auto probeMaterialProperty(const aiMaterial* material, const char* pKey, unsigned int type, unsigned int idx){
+    T value;
+    if(material->Get(pKey, type, idx, value) == aiReturn_SUCCESS){
+        return std::optional<T>(value);
+    }
+    return std::optional<T>();
 }
 
 void writeMeshPly(aiMesh* mesh, const std::string& filename){
@@ -116,38 +137,43 @@ void exportScene(const aiScene* scene, const std::string& path)
     for(size_t i = 0; i < scene->mNumMaterials; i++){
         aiMaterial* material = scene->mMaterials[i];
 
-        aiString name;
-        material->Get(AI_MATKEY_NAME, name);
-        int shadingModel;
-        material->Get(AI_MATKEY_SHADING_MODEL, shadingModel);
+        // set name to random number if not available because it is used as id
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<uint32_t> dis(0, std::numeric_limits<uint32_t>::max());
+        auto guid = dis(gen);
 
-        aiColor3D ka;
-        material->Get(AI_MATKEY_COLOR_AMBIENT, ka);
-        aiColor3D kd;
-        material->Get(AI_MATKEY_COLOR_DIFFUSE, kd);
-        aiColor3D ks;
-        material->Get(AI_MATKEY_COLOR_SPECULAR, ks);
-        float shininess;
-        material->Get(AI_MATKEY_SHININESS, shininess);
-        float opacity;
-        material->Get(AI_MATKEY_OPACITY, opacity);
-        float roughness;
-        material->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughness);
-        float metallic;
-        material->Get(AI_MATKEY_METALLIC_FACTOR, metallic);
-        float sheenFactor;
-        material->Get(AI_MATKEY_SHEEN_COLOR_FACTOR, sheenFactor);
-        float anisotropy;
-        material->Get(AI_MATKEY_ANISOTROPY_FACTOR, anisotropy);
-        float clearCoat;
-        material->Get(AI_MATKEY_CLEARCOAT_FACTOR, clearCoat);
-        float clearCoatRoughness;
-        material->Get(AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR, clearCoatRoughness);
-        float specularFactor;
-        material->Get(AI_MATKEY_SPECULAR_FACTOR, specularFactor);
+        auto name = probeMaterialProperty<aiString>(material, AI_MATKEY_NAME).value_or(aiString(std::to_string(guid)));
+        auto shadingModel = probeMaterialProperty<int>(material, AI_MATKEY_SHADING_MODEL).value_or(aiShadingMode_Phong);
+
+        // Get all possble material bsdf properties and set to default if not available
+        // clang-format off
+        auto ka =                   probeMaterialProperty<aiColor3D>(material, AI_MATKEY_COLOR_AMBIENT).value_or(aiColor3D(0.0f, 0.0f, 0.0f));
+        auto kd =                   probeMaterialProperty<aiColor3D>(material, AI_MATKEY_COLOR_DIFFUSE).value_or(aiColor3D(0.0f, 0.0f, 0.0f));
+        auto ks =                   probeMaterialProperty<aiColor3D>(material, AI_MATKEY_COLOR_SPECULAR).value_or(aiColor3D(0.0f, 0.0f, 0.0f));
+        auto baseColor =            probeMaterialProperty<aiColor3D>(material, AI_MATKEY_BASE_COLOR).value_or(kd);
+        auto shininess =            probeMaterialProperty<float>(material, AI_MATKEY_SHININESS).value_or(1.0f);
+        auto opacity =              probeMaterialProperty<float>(material, AI_MATKEY_OPACITY).value_or(1.0f);
+        auto roughness =            probeMaterialProperty<float>(material, AI_MATKEY_ROUGHNESS_FACTOR).value_or(0.5f);
+        auto metallic =             probeMaterialProperty<float>(material, AI_MATKEY_METALLIC_FACTOR).value_or(0.0f);
+        auto sheenFactor =          probeMaterialProperty<float>(material, AI_MATKEY_SHEEN_COLOR_FACTOR).value_or(0.0f);
+        auto anisotropy =           probeMaterialProperty<float>(material, AI_MATKEY_ANISOTROPY_FACTOR).value_or(0.0f);
+        auto clearCoat =            probeMaterialProperty<float>(material, AI_MATKEY_CLEARCOAT_FACTOR).value_or(0.0f);
+        auto clearCoatRoughness =   probeMaterialProperty<float>(material, AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR).value_or(0.0f);
+        auto specularFactor =       probeMaterialProperty<float>(material, AI_MATKEY_SPECULAR_FACTOR).value_or(0.5f);
+
+        // Get all possible texture paths (these are all optional)
+        auto diffuseTexture =       probeMaterialTexture(material, aiTextureType_DIFFUSE);
+        auto metallicTexture =      probeMaterialTexture(material, aiTextureType_METALNESS);
+        auto roughnessTexture =     probeMaterialTexture(material, aiTextureType_DIFFUSE_ROUGHNESS);
+        auto normalTexture =        probeMaterialTexture(material, aiTextureType_NORMALS);
+        auto displacementTexture =  probeMaterialTexture(material, aiTextureType_DISPLACEMENT);
+        auto occlusionTexture =     probeMaterialTexture(material, aiTextureType_AMBIENT_OCCLUSION);
+        auto emissiveTexture =      probeMaterialTexture(material, aiTextureType_EMISSIVE);
+        // clang-format on
 
         if(shadingModel != aiShadingMode_PBR_BRDF){
-            // set reasonable defaults
+            // set reasonable defaults, because other values cannot be trusted
             roughness = 0.5f;
             metallic = 0.0f;
             sheenFactor = 0.0f;
@@ -162,7 +188,7 @@ void exportScene(const aiScene* scene, const std::string& path)
         auto materialNode = doc.NewElement("bsdf");
         materialNode->SetAttribute("type", "principled");
         twoSidedNode->SetAttribute("id", name.C_Str());
-        auto baseColorNode = constructNode(doc, "rgb", "base_color", std::to_string(kd.r) + "," + std::to_string(kd.g) + "," + std::to_string(kd.b));
+        auto baseColorNode = constructNode(doc, "rgb", "base_color", std::to_string(baseColor.r) + "," + std::to_string(baseColor.g) + "," + std::to_string(baseColor.b));
         materialNode->InsertEndChild(baseColorNode);
         auto roughnessNode = constructNode(doc, "float", "roughness", std::to_string(roughness));
         materialNode->InsertEndChild(roughnessNode);
