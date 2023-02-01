@@ -161,7 +161,7 @@ void exportScene(const aiScene* scene, const std::string& path)
         twoSidedNode->SetAttribute("type", "twosided");
         auto materialNode = doc.NewElement("bsdf");
         materialNode->SetAttribute("type", "principled");
-        materialNode->SetAttribute("id", name.C_Str());
+        twoSidedNode->SetAttribute("id", name.C_Str());
         auto baseColorNode = constructNode(doc, "rgb", "base_color", std::to_string(kd.r) + "," + std::to_string(kd.g) + "," + std::to_string(kd.b));
         materialNode->InsertEndChild(baseColorNode);
         auto roughnessNode = constructNode(doc, "float", "roughness", std::to_string(roughness));
