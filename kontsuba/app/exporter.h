@@ -3,4 +3,4 @@
 #include <string>
 #include <assimp/scene.h>
 
-void exportScene(const aiScene* scene, const std::string& path);
+void exportScene(const aiScene* scene, const std::string& from_path, const std::string& path);

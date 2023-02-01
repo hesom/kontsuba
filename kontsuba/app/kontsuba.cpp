@@ -17,12 +17,15 @@ int main(int argc, char const *argv[])
     const std::string path = "../../test_models/shapenet/models/model_normalized.obj";
     DefaultLogger::get()->info("Loading model: " + path);
     const aiScene* scene = importer.ReadFile(path,
-    aiProcess_CalcTangentSpace      |
-    aiProcess_Triangulate           |
-    aiProcess_JoinIdenticalVertices |
-    aiProcess_FindDegenerates       |
-    aiProcess_FixInfacingNormals    |
-    aiProcess_SortByPType);
+        aiProcess_Triangulate           |
+        aiProcess_JoinIdenticalVertices |
+        aiProcess_FindDegenerates       |
+        aiProcess_FixInfacingNormals    |
+        aiProcess_PreTransformVertices  |
+        aiProcess_FlipUVs               |
+        aiProcess_TransformUVCoords     |
+        aiProcess_SortByPType
+    );
 
     if(!scene){
         std::cout << "Error: " << importer.GetErrorString() << std::endl;
@@ -86,7 +89,7 @@ int main(int argc, char const *argv[])
         material->Get(AI_MATKEY_SHADING_MODEL, shadingModel);
     }
 
-    exportScene(scene, "test");
+    exportScene(scene, path, "test");
 
     DefaultLogger::kill();
 

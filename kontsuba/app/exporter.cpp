@@ -9,7 +9,9 @@
 #include <optional>
 #include <random>
 
-auto constructNode(tinyxml2::XMLDocument& doc, const std::string& type, const std::string name, const std::string& value){
+namespace fs = std::filesystem;
+
+auto constructNode(tinyxml2::XMLDocument& doc, const std::string& type, const std::string& name, const std::string& value){
     tinyxml2::XMLElement* node = doc.NewElement(type.c_str());
     node->SetAttribute("name", name.c_str());
     node->SetAttribute("value", value.c_str());
@@ -35,31 +37,69 @@ auto probeMaterialProperty(const aiMaterial* material, const char* pKey, unsigne
     return std::optional<T>();
 }
 
+template<typename T>
+auto translateValue(const T value){
+    return std::to_string(value);
+}
+
+template<>
+auto translateValue(const aiColor3D value){
+    return std::to_string(value.r) + ", " + std::to_string(value.g) + ", " + std::to_string(value.b);
+}
+
+template<typename T>
+auto valueOrTexture(const T value, const std::optional<std::string>& texture){
+    if(texture){
+        return texture.value();
+    }else{
+        return translateValue(value);
+    }
+}
+
+template<typename T>
+auto valueOrTextureNode(tinyxml2::XMLDocument& doc,
+                        const std::string& type,
+                        const std::string& name,
+                        T value,
+                        const std::optional<std::string>& texture){
+    if(texture){
+        auto node = doc.NewElement("texture");
+        node->SetAttribute("type", "bitmap");
+        node->SetAttribute("name", name.c_str());
+        auto textureFileName = fs::path(texture.value()).filename();
+        auto filenameNode = constructNode(doc, "string", "filename", "textures/" + textureFileName.string());
+        node->InsertEndChild(filenameNode);
+        return node;
+    }
+    
+    auto node = constructNode(doc, type, name, translateValue(value));
+    return node;
+}
+
 void writeMeshPly(aiMesh* mesh, const std::string& filename){
     
     std::filebuf fb_binary;
-    fb_binary.open(filename, std::ios::out | std::ios::binary);
+    fb_binary.open(filename, std::ios::out);
     std::ostream outstream_binary(&fb_binary);
     if(outstream_binary.fail()){
         throw std::runtime_error("failed to open " + filename);
     }
 
     tinyply::PlyFile meshFile;
-    std::cout << mesh->mNumVertices << std::endl;
-    meshFile.add_properties_to_element("vertex", {"x", "y", "z"},
-        tinyply::Type::FLOAT32, mesh->mNumVertices, reinterpret_cast<uint8_t*>(mesh->mVertices), tinyply::Type::INVALID, 0);
-
-    if(mesh->HasNormals()){
-        meshFile.add_properties_to_element("vertex", {"nx", "ny", "nz"},
-            tinyply::Type::FLOAT32, mesh->mNumVertices, reinterpret_cast<uint8_t*>(mesh->mNormals), tinyply::Type::INVALID, 0);
+    std::vector<float> vertices;
+    std::vector<float> normals;
+    for(unsigned int i = 0; i < mesh->mNumVertices; i++){
+        vertices.push_back(mesh->mVertices[i].x);
+        vertices.push_back(mesh->mVertices[i].y);
+        vertices.push_back(mesh->mVertices[i].z);
+        if(mesh->HasNormals()){
+            normals.push_back(mesh->mNormals[i].x);
+            normals.push_back(mesh->mNormals[i].y);
+            normals.push_back(mesh->mNormals[i].z);
+        }
     }
-    
-    if(mesh->HasTextureCoords(0)){
-        meshFile.add_properties_to_element("vertex", {"u", "v"},
-            tinyply::Type::FLOAT32, mesh->mNumVertices, reinterpret_cast<uint8_t*>(mesh->mTextureCoords[0]), tinyply::Type::INVALID, 0);
-    }
 
-    std::vector<unsigned int> indices;
+    std::vector<uint32_t> indices;
     for(unsigned int i = 0; i < mesh->mNumFaces; i++){
         const aiFace& face = mesh->mFaces[i];
         auto numIndices = face.mNumIndices;
@@ -70,15 +110,48 @@ void writeMeshPly(aiMesh* mesh, const std::string& filename){
             indices.push_back(face.mIndices[j]);
         }
     }
+    meshFile.add_properties_to_element("vertex", {"x", "y", "z"},
+        tinyply::Type::FLOAT32, mesh->mNumVertices, reinterpret_cast<uint8_t*>(vertices.data()), tinyply::Type::INVALID, 0);
+
+    if(mesh->HasNormals()){
+        meshFile.add_properties_to_element("vertex", {"nx", "ny", "nz"},
+            tinyply::Type::FLOAT32, mesh->mNumVertices, reinterpret_cast<uint8_t*>(normals.data()), tinyply::Type::INVALID, 0);
+    }
+    
+    std::vector<float> texCoords;   // this needs to be in the same scope as meshFile
+    if(mesh->HasTextureCoords(0)){
+        for(unsigned int i = 0; i < mesh->mNumVertices; i++){
+            texCoords.push_back(mesh->mTextureCoords[0][i].x);
+            texCoords.push_back(mesh->mTextureCoords[0][i].y);
+        }
+        meshFile.add_properties_to_element("vertex", {"s", "t"},
+            tinyply::Type::FLOAT32, mesh->mNumVertices, reinterpret_cast<uint8_t*>(texCoords.data()), tinyply::Type::INVALID, 0);
+    }
+
     meshFile.add_properties_to_element("face", {"vertex_indices"},
         tinyply::Type::UINT32, mesh->mNumFaces, reinterpret_cast<uint8_t*>(indices.data()), tinyply::Type::UINT8, 3);
 
     meshFile.get_comments().push_back("generated by kontsuba");
-    meshFile.write(outstream_binary, true);
+    meshFile.write(outstream_binary, false);
 }
 
-void exportScene(const aiScene* scene, const std::string& path)
+void exportScene(const aiScene* scene, const std::string& from_path, const std::string& path)
 {
+    auto baseDir = fs::canonical(from_path);
+
+    // if the path is a file, remove the file name
+    if(!fs::is_directory(baseDir)){
+        baseDir = baseDir.parent_path();
+    }
+
+    auto outputBasePath = fs::path(path);
+    auto outputSceneDescPath = outputBasePath / "scene.xml";
+    auto outputMeshPath = outputBasePath / "meshes";
+    auto outputTexturePath = outputBasePath / "textures";
+    fs::create_directories(path);
+    fs::create_directories(outputMeshPath);
+    fs::create_directories(outputTexturePath);
+
     tinyxml2::XMLDocument doc;
 
     tinyxml2::XMLElement* root = doc.NewElement("scene");
@@ -129,9 +202,6 @@ void exportScene(const aiScene* scene, const std::string& path)
     auto positionNode = constructNode(doc, "point", "position", "2, 2, 2");
     emitterNode->InsertEndChild(positionNode);
     root->InsertEndChild(emitterNode);
-
-    std::filesystem::create_directories(path);
-    std::filesystem::create_directories(path + "/meshes");
 
     // loop over all materials in scene
     for(size_t i = 0; i < scene->mNumMaterials; i++){
@@ -188,13 +258,13 @@ void exportScene(const aiScene* scene, const std::string& path)
         auto materialNode = doc.NewElement("bsdf");
         materialNode->SetAttribute("type", "principled");
         twoSidedNode->SetAttribute("id", name.C_Str());
-        auto baseColorNode = constructNode(doc, "rgb", "base_color", std::to_string(baseColor.r) + "," + std::to_string(baseColor.g) + "," + std::to_string(baseColor.b));
+        auto baseColorNode = valueOrTextureNode(doc, "rgb", "base_color", baseColor, diffuseTexture);
         materialNode->InsertEndChild(baseColorNode);
-        auto roughnessNode = constructNode(doc, "float", "roughness", std::to_string(roughness));
+        auto roughnessNode = valueOrTextureNode(doc, "float", "roughness", roughness, roughnessTexture);
         materialNode->InsertEndChild(roughnessNode);
         auto specularFactorNode = constructNode(doc, "float", "specular", std::to_string(specularFactor));
         materialNode->InsertEndChild(specularFactorNode);
-        auto metallicNode = constructNode(doc, "float", "metallic", std::to_string(metallic));
+        auto metallicNode = valueOrTextureNode(doc, "float", "metallic", metallic, metallicTexture);
         materialNode->InsertEndChild(metallicNode);
         auto sheenNode = constructNode(doc, "float", "sheen", std::to_string(sheenFactor));
         materialNode->InsertEndChild(sheenNode);
@@ -206,6 +276,12 @@ void exportScene(const aiScene* scene, const std::string& path)
         materialNode->InsertEndChild(clearCoatRoughnessNode);
         twoSidedNode->InsertEndChild(materialNode);
         root->InsertEndChild(twoSidedNode);
+
+        // copy textures to the correct folder if they exist
+        if(diffuseTexture){
+            fs::copy_file(baseDir / diffuseTexture.value(), outputTexturePath / fs::path(diffuseTexture.value()).filename(),
+                fs::copy_options::overwrite_existing);
+        }
     }
 
     // loop over all meshes in scene
@@ -213,9 +289,9 @@ void exportScene(const aiScene* scene, const std::string& path)
         aiMesh* mesh = scene->mMeshes[i];
 
         aiString name;
-        std::string plyName = path + "/meshes/mesh" + std::to_string(i) + ".ply";
+        auto plyName = outputMeshPath / ("mesh" + std::to_string(i) + ".ply");
         scene->mMaterials[mesh->mMaterialIndex]->Get(AI_MATKEY_NAME, name);
-        std::string plySceneFileName = "meshes/mesh" + std::to_string(i) + ".ply";
+        auto plySceneFileName = fs::relative(plyName, outputBasePath).string();
 
         auto meshNode = doc.NewElement("shape");
         meshNode->SetAttribute("type", "ply");
@@ -230,6 +306,5 @@ void exportScene(const aiScene* scene, const std::string& path)
         writeMeshPly(mesh, plyName);
     }
 
-    std::string xmlPath = path + "/scene.xml";
-    doc.SaveFile(xmlPath.c_str());
+    doc.SaveFile(outputSceneDescPath.c_str());
 }
