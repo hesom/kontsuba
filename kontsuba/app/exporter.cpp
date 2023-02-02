@@ -7,6 +7,7 @@
 #include <tinyply.h>
 #include <filesystem>
 #include <optional>
+#include <unordered_set>
 #include <random>
 
 namespace fs = std::filesystem;
@@ -86,16 +87,12 @@ void writeMeshPly(aiMesh* mesh, const std::string& filename){
     }
 
     tinyply::PlyFile meshFile;
-    std::vector<float> vertices;
-    std::vector<float> normals;
+    std::vector<aiVector3D> vertices;
+    std::vector<aiVector3D> normals;
     for(unsigned int i = 0; i < mesh->mNumVertices; i++){
-        vertices.push_back(mesh->mVertices[i].x);
-        vertices.push_back(mesh->mVertices[i].y);
-        vertices.push_back(mesh->mVertices[i].z);
+        vertices.push_back({mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z});
         if(mesh->HasNormals()){
-            normals.push_back(mesh->mNormals[i].x);
-            normals.push_back(mesh->mNormals[i].y);
-            normals.push_back(mesh->mNormals[i].z);
+            normals.push_back({mesh->mNormals[i].x, mesh->mNormals[i].y, mesh->mNormals[i].z});
         }
     }
 
@@ -110,6 +107,77 @@ void writeMeshPly(aiMesh* mesh, const std::string& filename){
             indices.push_back(face.mIndices[j]);
         }
     }
+
+    using FaceData = std::tuple<uint32_t, uint32_t, uint32_t>; // indices
+
+    std::vector<FaceData> faces;
+    for(int i = 0; i < indices.size(); i += 3){
+        faces.push_back({indices[i], indices[i + 1], indices[i + 2]});
+    }
+
+    auto equal = [&](const FaceData& f1, const FaceData& f2){
+        float epsilon = 0.0001f;
+        auto [i1, i2, i3] = f1;
+        auto [j1, j2, j3] = f2;
+
+        // get vertices from indices
+        auto v1 = vertices[i1];
+        auto v2 = vertices[i2];
+        auto v3 = vertices[i3];
+
+        auto w1 = vertices[j1];
+        auto w2 = vertices[j2];
+        auto w3 = vertices[j3];
+
+        auto test = [=](const aiVector3D& v, const aiVector3D& w){
+            return abs(v.x - w.x) < epsilon && abs(v.y - w.y) < epsilon && abs(v.z - w.z) < epsilon;
+        };
+
+        // test distance smaller than epsilon for every permutation (3! = 6)
+        if(test(v1, w1) && test(v2, w2) && test(v3, w3)){
+            return true;
+        }
+        if(test(v1, w1) && test(v2, w3) && test(v3, w2)){
+            return true;
+        }
+        if(test(v1, w2) && test(v2, w1) && test(v3, w3)){
+            return true;
+        }
+        if(test(v1, w2) && test(v2, w3) && test(v3, w1)){
+            return true;
+        }
+        if(test(v1, w3) && test(v2, w1) && test(v3, w2)){
+            return true;
+        }
+        if(test(v1, w3) && test(v2, w2) && test(v3, w1)){
+            return true;
+        }
+
+        return false;
+    };
+
+    auto hash = [&](const FaceData& f){
+        auto [i1, i2, i3] = f;
+        auto v1 = vertices[i1];
+        auto v2 = vertices[i2];
+        auto v3 = vertices[i3];
+
+        return std::hash<float>()(v1.x) ^ std::hash<float>()(v1.y) ^ std::hash<float>()(v1.z) ^
+               std::hash<float>()(v2.x) ^ std::hash<float>()(v2.y) ^ std::hash<float>()(v2.z) ^
+               std::hash<float>()(v3.x) ^ std::hash<float>()(v3.y) ^ std::hash<float>()(v3.z);
+    };
+
+    using FaceSet = std::unordered_set<FaceData, decltype(hash), decltype(equal)>;
+    FaceSet faceSet(faces.begin(), faces.end(), 0, hash, equal);
+
+    std::vector<uint32_t> uniqueIndices;
+    for(const auto& face : faceSet){
+        auto [i1, i2, i3] = face;
+        uniqueIndices.push_back(i1);
+        uniqueIndices.push_back(i2);
+        uniqueIndices.push_back(i3);
+    }
+
     meshFile.add_properties_to_element("vertex", {"x", "y", "z"},
         tinyply::Type::FLOAT32, mesh->mNumVertices, reinterpret_cast<uint8_t*>(vertices.data()), tinyply::Type::INVALID, 0);
 
@@ -118,18 +186,17 @@ void writeMeshPly(aiMesh* mesh, const std::string& filename){
             tinyply::Type::FLOAT32, mesh->mNumVertices, reinterpret_cast<uint8_t*>(normals.data()), tinyply::Type::INVALID, 0);
     }
     
-    std::vector<float> texCoords;   // this needs to be in the same scope as meshFile
+    std::vector<aiVector2D> texCoords;   // this needs to be in the same scope as meshFile
     if(mesh->HasTextureCoords(0)){
         for(unsigned int i = 0; i < mesh->mNumVertices; i++){
-            texCoords.push_back(mesh->mTextureCoords[0][i].x);
-            texCoords.push_back(mesh->mTextureCoords[0][i].y);
+            texCoords.push_back({mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y});
         }
-        meshFile.add_properties_to_element("vertex", {"s", "t"},
+        meshFile.add_properties_to_element("vertex", {"u", "v"},
             tinyply::Type::FLOAT32, mesh->mNumVertices, reinterpret_cast<uint8_t*>(texCoords.data()), tinyply::Type::INVALID, 0);
     }
 
     meshFile.add_properties_to_element("face", {"vertex_indices"},
-        tinyply::Type::UINT32, mesh->mNumFaces, reinterpret_cast<uint8_t*>(indices.data()), tinyply::Type::UINT8, 3);
+        tinyply::Type::UINT32, faceSet.size(), reinterpret_cast<uint8_t*>(uniqueIndices.data()), tinyply::Type::UINT8, 3);
 
     meshFile.get_comments().push_back("generated by kontsuba");
     meshFile.write(outstream_binary, true);
