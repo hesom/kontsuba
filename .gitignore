@@ -31,4 +31,8 @@
 *.app
 
 build
+_skbuild
+tmp
 .vscode
+
+*.egg-info

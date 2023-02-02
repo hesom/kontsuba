@@ -3,16 +3,7 @@
 #include <string>
 
 namespace Kontsuba {
-    class Converter_Impl;
 
-    class Converter {
-    public:
-        Converter(const std::string& inputFile, const std::string& outputDirectory);
-        ~Converter();
+void convert(const std::string &inputFile, const std::string &outputDirectory);
 
-    private:
-        std::string m_inputFile;
-        std::string m_outputDirectory;
-        std::unique_ptr<Converter_Impl> m_impl;
-    };
 }

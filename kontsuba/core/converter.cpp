@@ -17,9 +17,10 @@
 namespace Kontsuba {
 using namespace tinyxml2;
 namespace fs = std::filesystem;
-class Converter_Impl {
+
+class Converter {
 public:
-  Converter_Impl(const std::string &inputFile,
+  Converter(const std::string &inputFile,
                  const std::string &outputDirectory)
       : m_inputFile(inputFile), m_outputDirectory(outputDirectory),
         m_importer(), m_xmlDoc() {
@@ -107,21 +108,12 @@ private:
   fs::path m_outputSceneDescPath;
 };
 
-template <> auto Converter_Impl::translateValue(const aiColor3D value) {
+template <> auto Converter::translateValue(const aiColor3D value) {
   return std::to_string(value.r) + " " + std::to_string(value.g) + " " +
          std::to_string(value.b);
 }
 
-Converter::Converter(const std::string &inputFile,
-                     const std::string &outputDirectory)
-    : m_inputFile(inputFile), m_outputDirectory(outputDirectory) {
-  m_impl = std::make_unique<Converter_Impl>(inputFile, outputDirectory);
-  m_impl->convert();
-}
-
-Converter::~Converter() = default;
-
-XMLElement *Converter_Impl::defaultIntegrator() {
+XMLElement *Converter::defaultIntegrator() {
   auto integrator = m_xmlDoc.NewElement("integrator");
   integrator->SetAttribute("type", "path");
   auto maxDepthNode = constructNode("integer", "max_depth", "3");
@@ -129,7 +121,7 @@ XMLElement *Converter_Impl::defaultIntegrator() {
   return integrator;
 }
 
-XMLElement *Converter_Impl::defaultLighting() {
+XMLElement *Converter::defaultLighting() {
   auto emitterNode = m_xmlDoc.NewElement("emitter");
   emitterNode->SetAttribute("type", "point");
   auto intensityNode = constructNode("rgb", "intensity", "10");
@@ -139,7 +131,7 @@ XMLElement *Converter_Impl::defaultLighting() {
   return emitterNode;
 }
 
-XMLElement *Converter_Impl::defaultSensor() {
+XMLElement *Converter::defaultSensor() {
   auto sensorNode = m_xmlDoc.NewElement("sensor");
   sensorNode->SetAttribute("type", "perspective");
   auto fovNode = constructNode("float", "fov", "45");
@@ -172,7 +164,7 @@ XMLElement *Converter_Impl::defaultSensor() {
   return sensorNode;
 }
 
-XMLElement *Converter_Impl::materialToBSDFNode(const aiMaterial *material) {
+XMLElement *Converter::materialToBSDFNode(const aiMaterial *material) {
   // set name to random number if not available because it is used as id
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -265,7 +257,7 @@ XMLElement *Converter_Impl::materialToBSDFNode(const aiMaterial *material) {
   return twoSidedNode;
 }
 
-void Converter_Impl::writeMeshPly(const aiMesh *mesh,
+void Converter::writeMeshPly(const aiMesh *mesh,
                                   const std::string &filename) {
 
   std::filebuf fb_binary;
@@ -405,7 +397,7 @@ void Converter_Impl::writeMeshPly(const aiMesh *mesh,
   meshFile.write(outstream_binary, true);
 }
 
-void Converter_Impl::convert() {
+void Converter::convert() {
   // clang-format off
   const aiScene *scene = m_importer.ReadFile(m_inputFile,
     aiProcess_Triangulate           |
@@ -465,6 +457,11 @@ void Converter_Impl::convert() {
   }
 
   m_xmlDoc.SaveFile(m_outputSceneDescPath.c_str());
+}
+
+void convert(const std::string &inputFile, const std::string &outputDirectory) {
+  Converter converter(inputFile, outputDirectory);
+  converter.convert();
 }
 
 } // namespace Kontsuba

@@ -34,7 +34,7 @@ int main(int argc, char const *argv[])
     const std::string path = args::get(input);
     const std::string outputDir = args::get(output);
 
-    Kontsuba::Converter(path, outputDir);
+    Kontsuba::convert(path, outputDir);
 
     return 0;
 }

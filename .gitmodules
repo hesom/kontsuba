@@ -1,3 +1,6 @@
 [submodule "dependencies/assimp"]
 	path = dependencies/assimp
 	url = git@github.com:assimp/assimp.git
+[submodule "dependencies/nanobind"]
+	path = dependencies/nanobind
+	url = git@github.com:wjakob/nanobind.git
