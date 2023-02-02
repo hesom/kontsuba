@@ -186,7 +186,7 @@ XMLElement *Converter_Impl::materialToBSDFNode(const aiMaterial *material) {
       probeMaterialProperty<int>(material, AI_MATKEY_SHADING_MODEL)
           .value_or(aiShadingMode_Phong);
 
-  // Get all possble material bsdf properties and set to default if not
+  // Get all possible material bsdf properties and set to default if not
   // available
   // clang-format off
   auto ka =                   probeMaterialProperty<aiColor3D>(material, AI_MATKEY_COLOR_AMBIENT).value_or(aiColor3D(0.0f, 0.0f, 0.0f));
