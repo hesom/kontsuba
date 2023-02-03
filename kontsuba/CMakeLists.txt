@@ -11,6 +11,7 @@ target_link_libraries(kontsuba_core
     PRIVATE assimp
     PRIVATE tinyxml2
     PRIVATE tinyply
+    PRIVATE fmt
 )
 set_property(TARGET kontsuba_core PROPERTY CXX_STANDARD 17)
 set_property(TARGET kontsuba_core PROPERTY POSITION_INDEPENDENT_CODE ON)

@@ -11,6 +11,8 @@ add_subdirectory(tinyxml2)
 
 add_subdirectory(tinyply)
 
+add_subdirectory(fmt)
+
 if(SKBUILD)
     add_subdirectory(nanobind)
 endif()

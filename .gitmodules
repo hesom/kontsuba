@@ -4,3 +4,6 @@
 [submodule "dependencies/nanobind"]
 	path = dependencies/nanobind
 	url = git@github.com:wjakob/nanobind.git
+[submodule "dependencies/fmt"]
+	path = dependencies/fmt
+	url = git@github.com:fmtlib/fmt.git

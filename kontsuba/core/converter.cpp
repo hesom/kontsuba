@@ -13,6 +13,8 @@
 #include <assimp/scene.h>
 #include <tinyply.h>
 #include <tinyxml2.h>
+#include <fmt/core.h>
+#include "principled_brdf.h"
 
 namespace Kontsuba {
 using namespace tinyxml2;
@@ -162,99 +164,6 @@ XMLElement *Converter::defaultSensor() {
   sensorNode->InsertEndChild(filmNode);
 
   return sensorNode;
-}
-
-XMLElement *Converter::materialToBSDFNode(const aiMaterial *material) {
-  // set name to random number if not available because it is used as id
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<uint32_t> dis(
-      0, std::numeric_limits<uint32_t>::max());
-  auto guid = dis(gen);
-
-  auto name = probeMaterialProperty<aiString>(material, AI_MATKEY_NAME)
-                  .value_or(aiString(std::to_string(guid)));
-  auto shadingModel =
-      probeMaterialProperty<int>(material, AI_MATKEY_SHADING_MODEL)
-          .value_or(aiShadingMode_Phong);
-
-  // Get all possible material bsdf properties and set to default if not
-  // available
-  // clang-format off
-  auto ka =                   probeMaterialProperty<aiColor3D>(material, AI_MATKEY_COLOR_AMBIENT).value_or(aiColor3D(0.0f, 0.0f, 0.0f));
-  auto kd =                   probeMaterialProperty<aiColor3D>(material, AI_MATKEY_COLOR_DIFFUSE).value_or(aiColor3D(0.0f, 0.0f, 0.0f));
-  auto ks =                   probeMaterialProperty<aiColor3D>(material, AI_MATKEY_COLOR_SPECULAR).value_or(aiColor3D(0.0f, 0.0f, 0.0f));
-  auto baseColor =            probeMaterialProperty<aiColor3D>(material, AI_MATKEY_BASE_COLOR).value_or(kd);
-  auto shininess =            probeMaterialProperty<float>(material, AI_MATKEY_SHININESS).value_or(1.0f);
-  auto opacity =              probeMaterialProperty<float>(material, AI_MATKEY_OPACITY).value_or(1.0f);
-  auto roughness =            probeMaterialProperty<float>(material, AI_MATKEY_ROUGHNESS_FACTOR).value_or(0.5f);
-  auto metallic =             probeMaterialProperty<float>(material, AI_MATKEY_METALLIC_FACTOR).value_or(0.0f);
-  auto sheenFactor =          probeMaterialProperty<float>(material, AI_MATKEY_SHEEN_COLOR_FACTOR).value_or(0.0f);
-  auto anisotropy =           probeMaterialProperty<float>(material, AI_MATKEY_ANISOTROPY_FACTOR).value_or(0.0f);
-  auto clearCoat =            probeMaterialProperty<float>(material, AI_MATKEY_CLEARCOAT_FACTOR).value_or(0.0f);
-  auto clearCoatRoughness =   probeMaterialProperty<float>(material, AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR).value_or(0.0f);
-  auto specularFactor =       probeMaterialProperty<float>(material, AI_MATKEY_SPECULAR_FACTOR).value_or(0.5f);
-
-  // Get all possible texture paths (these are all optional)
-  auto diffuseTexture =       probeMaterialTexture(material, aiTextureType_DIFFUSE);
-  auto metallicTexture =      probeMaterialTexture(material, aiTextureType_METALNESS);
-  auto roughnessTexture =     probeMaterialTexture(material, aiTextureType_DIFFUSE_ROUGHNESS);
-  auto normalTexture =        probeMaterialTexture(material, aiTextureType_NORMALS);
-  auto displacementTexture =  probeMaterialTexture(material, aiTextureType_DISPLACEMENT);
-  auto occlusionTexture =     probeMaterialTexture(material, aiTextureType_AMBIENT_OCCLUSION);
-  auto emissiveTexture =      probeMaterialTexture(material, aiTextureType_EMISSIVE);
-  // clang-format on
-
-  if (shadingModel != aiShadingMode_PBR_BRDF) {
-    // set reasonable defaults, because other values cannot be trusted
-    roughness = 0.5f;
-    metallic = 0.0f;
-    sheenFactor = 0.0f;
-    anisotropy = 0.0f;
-    clearCoat = 0.0f;
-    clearCoatRoughness = 0.0f;
-    specularFactor = 0.5f;
-  }
-
-  auto twoSidedNode = m_xmlDoc.NewElement("bsdf");
-  twoSidedNode->SetAttribute("type", "twosided");
-  auto materialNode = m_xmlDoc.NewElement("bsdf");
-  materialNode->SetAttribute("type", "principled");
-  twoSidedNode->SetAttribute("id", name.C_Str());
-  auto baseColorNode =
-      valueOrTextureNode("rgb", "base_color", baseColor, diffuseTexture);
-  materialNode->InsertEndChild(baseColorNode);
-  auto roughnessNode =
-      valueOrTextureNode("float", "roughness", roughness, roughnessTexture);
-  materialNode->InsertEndChild(roughnessNode);
-  auto specularFactorNode =
-      constructNode("float", "specular", std::to_string(specularFactor));
-  materialNode->InsertEndChild(specularFactorNode);
-  auto metallicNode =
-      valueOrTextureNode("float", "metallic", metallic, metallicTexture);
-  materialNode->InsertEndChild(metallicNode);
-  auto sheenNode = constructNode("float", "sheen", std::to_string(sheenFactor));
-  materialNode->InsertEndChild(sheenNode);
-  auto anisotropyNode =
-      constructNode("float", "anisotropic", std::to_string(anisotropy));
-  materialNode->InsertEndChild(anisotropyNode);
-  auto clearCoatNode =
-      constructNode("float", "clearcoat", std::to_string(clearCoat));
-  materialNode->InsertEndChild(clearCoatNode);
-  auto clearCoatRoughnessNode = constructNode(
-      "float", "clearcoat_gloss", std::to_string(clearCoatRoughness));
-  materialNode->InsertEndChild(clearCoatRoughnessNode);
-  twoSidedNode->InsertEndChild(materialNode);
-
-  // copy textures to the correct folder if they exist
-  if (diffuseTexture) {
-    fs::copy_file(m_fromDir / diffuseTexture.value(),
-                  m_outputTexturePath /
-                      fs::path(diffuseTexture.value()).filename(),
-                  fs::copy_options::overwrite_existing);
-  }
-
-  return twoSidedNode;
 }
 
 void Converter::writeMeshPly(const aiMesh *mesh,
@@ -429,8 +338,16 @@ void Converter::convert() {
 
   // loop over all materials in scene
   for (size_t i = 0; i < scene->mNumMaterials; i++) {
-    auto materialNode = materialToBSDFNode(scene->mMaterials[i]);
+    auto brdf = PrincipledBRDF::fromMaterial(scene->mMaterials[i], true);
+    auto materialNode = toXML(m_xmlDoc, brdf);
     m_xmlRoot->InsertEndChild(materialNode);
+
+    for(const auto& texture : brdf.textures) {
+      // copy texture to new location
+      fs::copy_file(m_fromDir / texture,
+        m_outputTexturePath / fs::path(texture).filename(),
+        fs::copy_options::overwrite_existing);
+    }
   }
 
   // loop over all meshes in scene
