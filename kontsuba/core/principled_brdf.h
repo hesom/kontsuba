@@ -48,9 +48,18 @@ auto probeMaterialProperty(const aiMaterial *material, const char *pKey,
 }
 
 template<typename T>
-auto set_if(std::optional<T> &opt, T &value){
+auto set_if(const std::optional<T> &opt, T &value){
   if(opt.has_value()){
     value = opt.value();
+    return true;
+  }
+  return false;
+}
+
+template<typename T>
+auto insert_if(const std::optional<T>& opt, std::set<T>& set){
+  if(opt.has_value()){
+    set.insert(opt.value());
     return true;
   }
   return false;
@@ -131,25 +140,14 @@ struct PrincipledBRDF {
     brdf.base_color.texture = diffuseTexture;
     brdf.metallic.texture = metallicTexture;
     brdf.roughness.texture = roughnessTexture;
-    brdf.anisotropic.texture = normalTexture;
-    brdf.clearcoat.texture = displacementTexture;
-    brdf.clearcoat_gloss.texture = occlusionTexture;
-    brdf.specular.texture = emissiveTexture;
 
-    if(diffuseTexture.has_value())
-      brdf.textures.insert(diffuseTexture.value());
-    if(metallicTexture.has_value())
-      brdf.textures.insert(metallicTexture.value());
-    if(roughnessTexture.has_value())
-      brdf.textures.insert(roughnessTexture.value());
-    if(normalTexture.has_value())
-      brdf.textures.insert(normalTexture.value());
-    if(displacementTexture.has_value())
-      brdf.textures.insert(displacementTexture.value());
-    if(occlusionTexture.has_value())
-      brdf.textures.insert(occlusionTexture.value());
-    if(emissiveTexture.has_value())
-      brdf.textures.insert(emissiveTexture.value());
+    insert_if(diffuseTexture, brdf.textures);
+    insert_if(metallicTexture, brdf.textures);
+    insert_if(roughnessTexture, brdf.textures);
+    insert_if(normalTexture, brdf.textures);
+    insert_if(displacementTexture, brdf.textures);
+    insert_if(occlusionTexture, brdf.textures);
+    insert_if(emissiveTexture, brdf.textures);
 
     brdf.twoSided = makeTwoSided;
     return brdf;
