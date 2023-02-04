@@ -103,19 +103,19 @@ struct PrincipledBRDF {
     brdf.name = name.has_value() ? name.value().C_Str() : fmt::format("id{}", guid);
 
     // clang-format off
-    auto ka =                   probeMaterialProperty<aiColor3D>(material, AI_MATKEY_COLOR_AMBIENT);
-    auto kd =                   probeMaterialProperty<aiColor3D>(material, AI_MATKEY_COLOR_DIFFUSE);
-    auto ks =                   probeMaterialProperty<aiColor3D>(material, AI_MATKEY_COLOR_SPECULAR);
-    auto baseColor =            probeMaterialProperty<aiColor3D>(material, AI_MATKEY_BASE_COLOR);
-    auto shininess =            probeMaterialProperty<float>(material, AI_MATKEY_SHININESS);
-    auto opacity =              probeMaterialProperty<float>(material, AI_MATKEY_OPACITY);
-    auto roughness =            probeMaterialProperty<float>(material, AI_MATKEY_ROUGHNESS_FACTOR);
-    auto metallic =             probeMaterialProperty<float>(material, AI_MATKEY_METALLIC_FACTOR);
-    auto sheenFactor =          probeMaterialProperty<float>(material, AI_MATKEY_SHEEN_COLOR_FACTOR);
-    auto anisotropic =          probeMaterialProperty<float>(material, AI_MATKEY_ANISOTROPY_FACTOR);
-    auto clearCoat =            probeMaterialProperty<float>(material, AI_MATKEY_CLEARCOAT_FACTOR);
-    auto clearCoatRoughness =   probeMaterialProperty<float>(material, AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR);
-    auto specularFactor =       probeMaterialProperty<float>(material, AI_MATKEY_SPECULAR_FACTOR);
+    auto ka =                   probeMaterialProperty<Spectrum>(material, AI_MATKEY_COLOR_AMBIENT);
+    auto kd =                   probeMaterialProperty<Spectrum>(material, AI_MATKEY_COLOR_DIFFUSE);
+    auto ks =                   probeMaterialProperty<Spectrum>(material, AI_MATKEY_COLOR_SPECULAR);
+    auto baseColor =            probeMaterialProperty<Spectrum>(material, AI_MATKEY_BASE_COLOR);
+    auto shininess =            probeMaterialProperty<Float>(material, AI_MATKEY_SHININESS);
+    auto opacity =              probeMaterialProperty<Float>(material, AI_MATKEY_OPACITY);
+    auto roughness =            probeMaterialProperty<Float>(material, AI_MATKEY_ROUGHNESS_FACTOR);
+    auto metallic =             probeMaterialProperty<Float>(material, AI_MATKEY_METALLIC_FACTOR);
+    auto sheenFactor =          probeMaterialProperty<Float>(material, AI_MATKEY_SHEEN_COLOR_FACTOR);
+    auto anisotropic =          probeMaterialProperty<Float>(material, AI_MATKEY_ANISOTROPY_FACTOR);
+    auto clearCoat =            probeMaterialProperty<Float>(material, AI_MATKEY_CLEARCOAT_FACTOR);
+    auto clearCoatRoughness =   probeMaterialProperty<Float>(material, AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR);
+    auto specularFactor =       probeMaterialProperty<Float>(material, AI_MATKEY_SPECULAR_FACTOR);
 
     set_if(kd, brdf.base_color.value);
     set_if(baseColor, brdf.base_color.value);
