@@ -75,7 +75,7 @@ struct PrincipledBRDF {
   // https://www.mitsuba-renderer.org/docs/current/bsdf.html#bsdf-principled
 
   std::string name = "id";
-  BRDF_PARAM(base_color, Spectrum, {0.5,0.5,0.5});
+  BRDF_PARAM(base_color, Spectrum, 0.5,0.5,0.5);
   BRDF_PARAM(roughness, Float, 0.5);
   BRDF_PARAM(anisotropic, Float, 0.0);
   BRDF_PARAM(metallic, Float, 0.0);
@@ -161,7 +161,7 @@ XMLElement* toXML(XMLDocument& doc, const TextureOr<T>& t){
     element->SetAttribute("type", "bitmap");
     element->SetAttribute("name", t.type.c_str());
     auto filenameNode = element->InsertNewChildElement("string");
-    auto filename = "textures" / fs::path(t.texture.value()).filename();
+    std::string filename = "textures/" + fs::path(t.texture.value()).filename().string();
     filenameNode->SetAttribute("name", "filename");
     filenameNode->SetAttribute("value", filename.c_str());
     return element;

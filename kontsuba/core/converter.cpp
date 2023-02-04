@@ -168,7 +168,7 @@ XMLElement *Converter::defaultSensor() {
 
 void Converter::writeMeshPly(const aiMesh *mesh,
                                   const std::string &filename) {
-
+                                    
   std::filebuf fb_binary;
   fb_binary.open(filename, std::ios::out | std::ios::binary);
   std::ostream outstream_binary(&fb_binary);
@@ -308,7 +308,7 @@ void Converter::writeMeshPly(const aiMesh *mesh,
 
 void Converter::convert() {
   // clang-format off
-  const aiScene *scene = m_importer.ReadFile(m_inputFile,
+  const aiScene *scene = m_importer.ReadFile(m_inputFile.string(),
     aiProcess_Triangulate           |
     aiProcess_JoinIdenticalVertices |
     aiProcess_FindDegenerates       |
@@ -357,7 +357,7 @@ void Converter::convert() {
     aiString name;
     auto plyName = m_outputMeshPath / ("mesh" + std::to_string(i) + ".ply");
     scene->mMaterials[mesh->mMaterialIndex]->Get(AI_MATKEY_NAME, name);
-    auto plySceneFileName = fs::relative(plyName, m_outputDirectory).string();
+    std::string plySceneFileName = "meshes/" + plyName.filename().string();
 
     auto meshNode = m_xmlDoc.NewElement("shape");
     meshNode->SetAttribute("type", "ply");
@@ -370,10 +370,10 @@ void Converter::convert() {
 
     m_xmlRoot->InsertEndChild(meshNode);
 
-    writeMeshPly(mesh, plyName);
+    writeMeshPly(mesh, plyName.string());
   }
 
-  m_xmlDoc.SaveFile(m_outputSceneDescPath.c_str());
+  m_xmlDoc.SaveFile(m_outputSceneDescPath.string().c_str());
 }
 
 void convert(const std::string &inputFile, const std::string &outputDirectory) {
