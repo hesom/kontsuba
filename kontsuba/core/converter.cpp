@@ -49,53 +49,11 @@ private:
   XMLElement *materialToBSDFNode(const aiMaterial *material);
   void writeMeshPly(const aiMesh *mesh, const std::string &path);
 
-  auto probeMaterialTexture(const aiMaterial *material, aiTextureType type) {
-    aiString path;
-    if (material->GetTextureCount(type) != 0) {
-      if (material->GetTexture(type, 0, &path) == aiReturn_SUCCESS) {
-        return std::optional<std::string>(path.C_Str());
-      }
-    }
-    return std::optional<std::string>();
-  }
-
-  template <typename T>
-  auto probeMaterialProperty(const aiMaterial *material, const char *pKey,
-                             unsigned int type, unsigned int idx) {
-    T value;
-    if (material->Get(pKey, type, idx, value) == aiReturn_SUCCESS) {
-      return std::optional<T>(value);
-    }
-    return std::optional<T>();
-  }
-
-  template <typename T> auto translateValue(const T value) {
-    return std::to_string(value);
-  }
-
   auto constructNode(const std::string &type, const std::string &name,
                      const std::string &value) {
     tinyxml2::XMLElement *node = m_xmlDoc.NewElement(type.c_str());
     node->SetAttribute("name", name.c_str());
     node->SetAttribute("value", value.c_str());
-    return node;
-  }
-
-  template <typename T>
-  auto valueOrTextureNode(const std::string &type, const std::string &name,
-                          T value, const std::optional<std::string> &texture) {
-    if (texture) {
-      auto node = m_xmlDoc.NewElement("texture");
-      node->SetAttribute("type", "bitmap");
-      node->SetAttribute("name", name.c_str());
-      auto textureFileName = fs::path(texture.value()).filename();
-      auto filenameNode = constructNode("string", "filename",
-                                        "textures/" + textureFileName.string());
-      node->InsertEndChild(filenameNode);
-      return node;
-    }
-
-    auto node = constructNode(type, name, translateValue(value));
     return node;
   }
 
@@ -109,11 +67,6 @@ private:
   fs::path m_outputTexturePath;
   fs::path m_outputSceneDescPath;
 };
-
-template <> auto Converter::translateValue(const aiColor3D value) {
-  return std::to_string(value.r) + " " + std::to_string(value.g) + " " +
-         std::to_string(value.b);
-}
 
 XMLElement *Converter::defaultIntegrator() {
   auto integrator = m_xmlDoc.NewElement("integrator");
