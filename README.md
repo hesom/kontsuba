@@ -1,4 +1,4 @@
-# kontsuba
+# Kontsuba
 Kontsuba is a command line tool for converting common 3D scene formats to a Mitsuba 3 scene description.
 **Under heavy construction. Chances are high that this doesn't work for you yet**
 
