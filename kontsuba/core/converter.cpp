@@ -15,6 +15,7 @@
 #include <tinyxml2.h>
 #include <fmt/core.h>
 #include "principled_brdf.h"
+#include "utils.h"
 
 namespace Kontsuba {
 using namespace tinyxml2;
@@ -26,10 +27,12 @@ public:
                  const std::string &outputDirectory)
       : m_inputFile(inputFile), m_outputDirectory(outputDirectory),
         m_importer(), m_xmlDoc() {
-    m_fromDir = fs::canonical(inputFile);
+    m_fromDir = fs::canonical(expand(inputFile));
     if (!fs::is_directory(m_fromDir)) {
       m_fromDir = m_fromDir.parent_path();
     }
+    m_inputFile = fs::canonical(expand(inputFile));
+    m_outputDirectory = fs::canonical(expand(outputDirectory));
 
     m_outputMeshPath = m_outputDirectory / "meshes";
     m_outputTexturePath = m_outputDirectory / "textures";
