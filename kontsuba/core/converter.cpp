@@ -50,7 +50,7 @@ private:
   XMLElement *defaultSensor();
   XMLElement *defaultLighting();
   XMLElement *materialToBSDFNode(const aiMaterial *material);
-  void writeMeshPly(const aiMesh *mesh, const std::string &path);
+  void writeMeshPly(const aiMesh *mesh, const std::string &path, bool removeDuplicateFaces = false);
 
   auto constructNode(const std::string &type, const std::string &name,
                      const std::string &value) {
@@ -123,7 +123,8 @@ XMLElement *Converter::defaultSensor() {
 }
 
 void Converter::writeMeshPly(const aiMesh *mesh,
-                                  const std::string &filename) {
+                             const std::string &filename,
+                             bool removeDuplicateFaces) {
                                     
   std::filebuf fb_binary;
   fb_binary.open(filename, std::ios::out | std::ios::binary);
@@ -149,84 +150,88 @@ void Converter::writeMeshPly(const aiMesh *mesh,
     const aiFace &face = mesh->mFaces[i];
     auto numIndices = face.mNumIndices;
     if (numIndices != 3) {
-      throw std::runtime_error("only triangles are supported");
+      throw std::runtime_error("only triangles are supported. Number of Vertices: " +
+        std::to_string(numIndices) + " in Mesh: " + mesh->mName.C_Str());
     }
     for (unsigned int j = 0; j < numIndices; j++) {
       indices.push_back(face.mIndices[j]);
     }
   }
 
-  using FaceData = std::tuple<uint32_t, uint32_t, uint32_t>; // indices
+  if (removeDuplicateFaces) {
+    using FaceData = std::tuple<uint32_t, uint32_t, uint32_t>; // indices
 
-  std::vector<FaceData> faces;
-  for (int i = 0; i < indices.size(); i += 3) {
-    faces.push_back({indices[i], indices[i + 1], indices[i + 2]});
-  }
+    std::vector<FaceData> faces;
+    for (int i = 0; i < indices.size(); i += 3) {
+      faces.push_back({indices[i], indices[i + 1], indices[i + 2]});
+    }
 
-  auto equal = [&](const FaceData &f1, const FaceData &f2) {
-    float epsilon = 0.0001f;
-    auto [i1, i2, i3] = f1;
-    auto [j1, j2, j3] = f2;
+    auto equal = [&](const FaceData &f1, const FaceData &f2) {
+      float epsilon = 0.0001f;
+      auto [i1, i2, i3] = f1;
+      auto [j1, j2, j3] = f2;
 
-    // get vertices from indices
-    auto v1 = vertices[i1];
-    auto v2 = vertices[i2];
-    auto v3 = vertices[i3];
+      // get vertices from indices
+      auto v1 = vertices[i1];
+      auto v2 = vertices[i2];
+      auto v3 = vertices[i3];
 
-    auto w1 = vertices[j1];
-    auto w2 = vertices[j2];
-    auto w3 = vertices[j3];
+      auto w1 = vertices[j1];
+      auto w2 = vertices[j2];
+      auto w3 = vertices[j3];
 
-    auto test = [=](const aiVector3D &v, const aiVector3D &w) {
-      return abs(v.x - w.x) < epsilon && abs(v.y - w.y) < epsilon &&
-             abs(v.z - w.z) < epsilon;
+      auto test = [=](const aiVector3D &v, const aiVector3D &w) {
+        return abs(v.x - w.x) < epsilon && abs(v.y - w.y) < epsilon &&
+              abs(v.z - w.z) < epsilon;
+      };
+
+      // test distance smaller than epsilon for every permutation (3! = 6)
+      if (test(v1, w1) && test(v2, w2) && test(v3, w3)) {
+        return true;
+      }
+      if (test(v1, w1) && test(v2, w3) && test(v3, w2)) {
+        return true;
+      }
+      if (test(v1, w2) && test(v2, w1) && test(v3, w3)) {
+        return true;
+      }
+      if (test(v1, w2) && test(v2, w3) && test(v3, w1)) {
+        return true;
+      }
+      if (test(v1, w3) && test(v2, w1) && test(v3, w2)) {
+        return true;
+      }
+      if (test(v1, w3) && test(v2, w2) && test(v3, w1)) {
+        return true;
+      }
+
+      return false;
     };
 
-    // test distance smaller than epsilon for every permutation (3! = 6)
-    if (test(v1, w1) && test(v2, w2) && test(v3, w3)) {
-      return true;
-    }
-    if (test(v1, w1) && test(v2, w3) && test(v3, w2)) {
-      return true;
-    }
-    if (test(v1, w2) && test(v2, w1) && test(v3, w3)) {
-      return true;
-    }
-    if (test(v1, w2) && test(v2, w3) && test(v3, w1)) {
-      return true;
-    }
-    if (test(v1, w3) && test(v2, w1) && test(v3, w2)) {
-      return true;
-    }
-    if (test(v1, w3) && test(v2, w2) && test(v3, w1)) {
-      return true;
-    }
+    auto hash = [&](const FaceData &f) {
+      auto [i1, i2, i3] = f;
+      auto v1 = vertices[i1];
+      auto v2 = vertices[i2];
+      auto v3 = vertices[i3];
 
-    return false;
-  };
+      return std::hash<float>()(v1.x) ^ std::hash<float>()(v1.y) ^
+            std::hash<float>()(v1.z) ^ std::hash<float>()(v2.x) ^
+            std::hash<float>()(v2.y) ^ std::hash<float>()(v2.z) ^
+            std::hash<float>()(v3.x) ^ std::hash<float>()(v3.y) ^
+            std::hash<float>()(v3.z);
+    };
 
-  auto hash = [&](const FaceData &f) {
-    auto [i1, i2, i3] = f;
-    auto v1 = vertices[i1];
-    auto v2 = vertices[i2];
-    auto v3 = vertices[i3];
+    using FaceSet = std::unordered_set<FaceData, decltype(hash), decltype(equal)>;
+    FaceSet faceSet(faces.begin(), faces.end(), 0, hash, equal);
 
-    return std::hash<float>()(v1.x) ^ std::hash<float>()(v1.y) ^
-           std::hash<float>()(v1.z) ^ std::hash<float>()(v2.x) ^
-           std::hash<float>()(v2.y) ^ std::hash<float>()(v2.z) ^
-           std::hash<float>()(v3.x) ^ std::hash<float>()(v3.y) ^
-           std::hash<float>()(v3.z);
-  };
-
-  using FaceSet = std::unordered_set<FaceData, decltype(hash), decltype(equal)>;
-  FaceSet faceSet(faces.begin(), faces.end(), 0, hash, equal);
-
-  std::vector<uint32_t> uniqueIndices;
-  for (const auto &face : faceSet) {
-    auto [i1, i2, i3] = face;
-    uniqueIndices.push_back(i1);
-    uniqueIndices.push_back(i2);
-    uniqueIndices.push_back(i3);
+    std::vector<uint32_t> uniqueIndices;
+    for (const auto &face : faceSet) {
+      auto [i1, i2, i3] = face;
+      uniqueIndices.push_back(i1);
+      uniqueIndices.push_back(i2);
+      uniqueIndices.push_back(i3);
+    }
+    indices = uniqueIndices;
   }
 
   meshFile.add_properties_to_element(
@@ -254,8 +259,8 @@ void Converter::writeMeshPly(const aiMesh *mesh,
   }
 
   meshFile.add_properties_to_element(
-      "face", {"vertex_indices"}, tinyply::Type::UINT32, faceSet.size(),
-      reinterpret_cast<uint8_t *>(uniqueIndices.data()), tinyply::Type::UINT8,
+      "face", {"vertex_indices"}, tinyply::Type::UINT32, indices.size() / 3,
+      reinterpret_cast<uint8_t *>(indices.data()), tinyply::Type::UINT8,
       3);
 
   meshFile.get_comments().push_back("generated by kontsuba");
@@ -292,6 +297,13 @@ void Converter::convert() {
   m_xmlRoot->InsertEndChild(lightingNode);
   m_xmlRoot->InsertEndChild(sensorNode);
 
+  // TODO remove this when we have proper emitter loading
+  auto backgroundNode = m_xmlDoc.NewElement("emitter");
+  backgroundNode->SetAttribute("type", "constant");
+  auto backgroundIntensityNode = constructNode("rgb", "radiance", "1.0");
+  backgroundNode->InsertEndChild(backgroundIntensityNode);
+  m_xmlRoot->InsertEndChild(backgroundNode);
+
   // loop over all materials in scene
   for (size_t i = 0; i < scene->mNumMaterials; i++) {
     auto brdf = PrincipledBRDF::fromMaterial(scene->mMaterials[i], true);
@@ -315,18 +327,22 @@ void Converter::convert() {
     scene->mMaterials[mesh->mMaterialIndex]->Get(AI_MATKEY_NAME, name);
     std::string plySceneFileName = "meshes/" + plyName.filename().string();
 
-    auto meshNode = m_xmlDoc.NewElement("shape");
-    meshNode->SetAttribute("type", "ply");
-    auto filenameNode =
-        constructNode("string", "filename", plySceneFileName.c_str());
-    meshNode->InsertEndChild(filenameNode);
-    auto refNode = m_xmlDoc.NewElement("ref");
-    refNode->SetAttribute("id", name.C_Str());
-    meshNode->InsertEndChild(refNode);
+    try {
+      writeMeshPly(mesh, plyName.string());
+      auto meshNode = m_xmlDoc.NewElement("shape");
+      meshNode->SetAttribute("type", "ply");
+      auto filenameNode =
+          constructNode("string", "filename", plySceneFileName.c_str());
+      meshNode->InsertEndChild(filenameNode);
+      auto refNode = m_xmlDoc.NewElement("ref");
+      refNode->SetAttribute("id", name.C_Str());
+      meshNode->InsertEndChild(refNode);
 
-    m_xmlRoot->InsertEndChild(meshNode);
+      m_xmlRoot->InsertEndChild(meshNode);
+    } catch(std::exception& e) {
+      std::cout << "Warning: " << e.what() << std::endl;
+    }
 
-    writeMeshPly(mesh, plyName.string());
   }
 
   m_xmlDoc.SaveFile(m_outputSceneDescPath.string().c_str());
