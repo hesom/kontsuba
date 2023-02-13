@@ -9,9 +9,6 @@
 #include <fmt/format.h>
 #include <tinyxml2.h>
 
-//tmp
-#include <iostream>
-
 using Spectrum = aiColor3D;
 using Float = float;
 using Texture = std::string;
@@ -148,7 +145,6 @@ struct PrincipledBRDF {
 	
 	if(normalTexture.has_value()){
 		brdf.normalTex = true;
-		std::cout << normalTexture.value() << std::endl; //tmp
 	}
 	brdf.normal.texture = normalTexture;
 
@@ -232,8 +228,6 @@ XMLElement* toXML(XMLDocument& doc, const PrincipledBRDF& brdf){
     std::string filename = "textures/" + fs::path(brdf.normal.texture.value()).filename().string();
     filenameNode->SetAttribute("name", "filename");
     filenameNode->SetAttribute("value", filename.c_str());
-	
-	std::cout << "brdf-ied the " << filename << std::endl;
 	
 	element->InsertEndChild(old);
   }
