@@ -4,7 +4,7 @@ import kontsuba
 
 mi.set_variant("scalar_rgb")
 
-kontsuba.convert("./test_models/shapenet/models/model_normalized.obj", "tmp") # TODO directly return Python dict
+kontsuba.convert("./test_models/normalTest.gltf", "tmp") # TODO directly return Python dict
 scene = mi.load_file("./tmp/scene.xml")
 
 img = mi.render(scene)
