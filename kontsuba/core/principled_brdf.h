@@ -87,6 +87,8 @@ struct PrincipledBRDF {
   BRDF_PARAM(clearcoat, Float, 0.0);
   BRDF_PARAM(clearcoat_gloss, Float, 0.0);
 
+  std::optional<Texture> normalMap;
+
   bool twoSided;
   std::set<Texture> textures;
 
@@ -140,6 +142,8 @@ struct PrincipledBRDF {
     brdf.base_color.texture = diffuseTexture;
     brdf.metallic.texture = metallicTexture;
     brdf.roughness.texture = roughnessTexture;
+	
+    brdf.normalMap = normalTexture;
 
     insert_if(diffuseTexture, brdf.textures);
     insert_if(metallicTexture, brdf.textures);
@@ -195,12 +199,33 @@ XMLElement* toXML(XMLDocument& doc, const PrincipledBRDF& brdf){
   element->InsertEndChild(toXML(doc, brdf.clearcoat_gloss));
 
   if(brdf.twoSided){
-    auto twosided = doc.NewElement("bsdf");
-    twosided->SetAttribute("type", "twosided");
-    twosided->SetAttribute("id", brdf.name.c_str());
-    twosided->InsertEndChild(element);
-    return twosided;
+	  auto old = element;
+    element = doc.NewElement("bsdf");
+    element->SetAttribute("type", "twosided");
+    element->InsertEndChild(old);
   }
+  
+  if(brdf.normalMap.has_value()){
+    auto old = element;
+    element = doc.NewElement("bsdf");
+    element->SetAttribute("type", "normalmap");
+    
+    auto texelement = element->InsertNewChildElement("texture");
+    texelement->SetAttribute("name", "normalmap");
+    texelement->SetAttribute("type", "bitmap");
+    
+    auto noTransformNode = texelement->InsertNewChildElement("boolean");
+    noTransformNode->SetAttribute("name", "raw");
+    noTransformNode->SetAttribute("value", "true");
+    
+    auto filenameNode = texelement->InsertNewChildElement("string");
+    std::string filename = "textures/" + fs::path(brdf.normalMap.value()).filename().string();
+    filenameNode->SetAttribute("name", "filename");
+    filenameNode->SetAttribute("value", filename.c_str());
+    
+    element->InsertEndChild(old);
+  }
+  
   element->SetAttribute("id", brdf.name.c_str());
   return element;
 }
