@@ -88,6 +88,7 @@ struct PrincipledBRDF {
   BRDF_PARAM(clearcoat_gloss, Float, 0.0);
 
   std::optional<Texture> normalMap;
+  std::optional<Texture> bumpMap;
 
   bool twoSided;
   std::set<Texture> textures;
@@ -134,6 +135,7 @@ struct PrincipledBRDF {
     auto metallicTexture =      probeMaterialTexture(material, aiTextureType_METALNESS);
     auto roughnessTexture =     probeMaterialTexture(material, aiTextureType_DIFFUSE_ROUGHNESS);
     auto normalTexture =        probeMaterialTexture(material, aiTextureType_NORMALS);
+    auto bumpTexture =          probeMaterialTexture(material, aiTextureType_HEIGHT);
     auto displacementTexture =  probeMaterialTexture(material, aiTextureType_DISPLACEMENT);
     auto occlusionTexture =     probeMaterialTexture(material, aiTextureType_AMBIENT_OCCLUSION);
     auto emissiveTexture =      probeMaterialTexture(material, aiTextureType_EMISSIVE);
@@ -144,11 +146,13 @@ struct PrincipledBRDF {
     brdf.roughness.texture = roughnessTexture;
 	
     brdf.normalMap = normalTexture;
+    brdf.bumpMap = bumpTexture;
 
     insert_if(diffuseTexture, brdf.textures);
     insert_if(metallicTexture, brdf.textures);
     insert_if(roughnessTexture, brdf.textures);
     insert_if(normalTexture, brdf.textures);
+    insert_if(bumpTexture, brdf.textures);
     insert_if(displacementTexture, brdf.textures);
     insert_if(occlusionTexture, brdf.textures);
     insert_if(emissiveTexture, brdf.textures);
@@ -184,6 +188,31 @@ XMLElement* toXML(XMLDocument& doc, const TextureOr<T>& t){
   }
 }
 
+XMLElement* xmlBrdfMapWrapper(XMLDocument& doc, XMLElement* old, const std::optional<Texture> &tex, std::string mapKind){
+  if (!tex.has_value()){
+    return old;
+  }
+
+  auto element = doc.NewElement("bsdf");
+  element->SetAttribute("type", mapKind.c_str());
+    
+  auto texelement = element->InsertNewChildElement("texture");
+  texelement->SetAttribute("name", mapKind.c_str());
+  texelement->SetAttribute("type", "bitmap");
+    
+  auto noTransformNode = texelement->InsertNewChildElement("boolean");
+  noTransformNode->SetAttribute("name", "raw");
+  noTransformNode->SetAttribute("value", "true");
+    
+  auto filenameNode = texelement->InsertNewChildElement("string");
+  std::string filename = "textures/" + fs::path(tex.value()).filename().string();
+  filenameNode->SetAttribute("name", "filename");
+  filenameNode->SetAttribute("value", filename.c_str());
+    
+  element->InsertEndChild(old);
+  return element;
+}
+
 XMLElement* toXML(XMLDocument& doc, const PrincipledBRDF& brdf){
   auto element = doc.NewElement("bsdf");
   element->SetAttribute("type", "principled");
@@ -204,27 +233,9 @@ XMLElement* toXML(XMLDocument& doc, const PrincipledBRDF& brdf){
     element->SetAttribute("type", "twosided");
     element->InsertEndChild(old);
   }
-  
-  if(brdf.normalMap.has_value()){
-    auto old = element;
-    element = doc.NewElement("bsdf");
-    element->SetAttribute("type", "normalmap");
-    
-    auto texelement = element->InsertNewChildElement("texture");
-    texelement->SetAttribute("name", "normalmap");
-    texelement->SetAttribute("type", "bitmap");
-    
-    auto noTransformNode = texelement->InsertNewChildElement("boolean");
-    noTransformNode->SetAttribute("name", "raw");
-    noTransformNode->SetAttribute("value", "true");
-    
-    auto filenameNode = texelement->InsertNewChildElement("string");
-    std::string filename = "textures/" + fs::path(brdf.normalMap.value()).filename().string();
-    filenameNode->SetAttribute("name", "filename");
-    filenameNode->SetAttribute("value", filename.c_str());
-    
-    element->InsertEndChild(old);
-  }
+
+  element = xmlBrdfMapWrapper(doc, element, brdf.normalMap, "normalmap");
+  element = xmlBrdfMapWrapper(doc, element, brdf.bumpMap, "bumpmap");
   
   element->SetAttribute("id", brdf.name.c_str());
   return element;
