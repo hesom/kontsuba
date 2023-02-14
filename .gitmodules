@@ -7,3 +7,6 @@
 [submodule "dependencies/fmt"]
 	path = dependencies/fmt
 	url = git@github.com:fmtlib/fmt.git
+[submodule "dependencies/fmt"]
+	path = dependencies/zlib
+	url = git@github.com:mitsuba-renderer/zlib.git
