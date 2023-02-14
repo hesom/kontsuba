@@ -76,7 +76,6 @@ struct PrincipledBRDF {
 
   std::string name = "id";
   BRDF_PARAM(base_color, Spectrum, 0.5,0.5,0.5);
-  BRDF_PARAM(normal, Spectrum, 0.0,0.0,1.0);
   BRDF_PARAM(roughness, Float, 0.5);
   BRDF_PARAM(anisotropic, Float, 0.0);
   BRDF_PARAM(metallic, Float, 0.0);
@@ -88,8 +87,9 @@ struct PrincipledBRDF {
   BRDF_PARAM(clearcoat, Float, 0.0);
   BRDF_PARAM(clearcoat_gloss, Float, 0.0);
 
+  std::optional<Texture> normalMap;
+
   bool twoSided;
-  bool normalTex = false;
   std::set<Texture> textures;
 
   static PrincipledBRDF fromMaterial(aiMaterial* material, bool makeTwoSided = false){
@@ -143,10 +143,7 @@ struct PrincipledBRDF {
     brdf.metallic.texture = metallicTexture;
     brdf.roughness.texture = roughnessTexture;
 	
-	if(normalTexture.has_value()){
-		brdf.normalTex = true;
-	}
-	brdf.normal.texture = normalTexture;
+    brdf.normalMap = normalTexture;
 
     insert_if(diffuseTexture, brdf.textures);
     insert_if(metallicTexture, brdf.textures);
@@ -201,37 +198,33 @@ XMLElement* toXML(XMLDocument& doc, const PrincipledBRDF& brdf){
   element->InsertEndChild(toXML(doc, brdf.clearcoat));
   element->InsertEndChild(toXML(doc, brdf.clearcoat_gloss));
 
-
   if(brdf.twoSided){
-	auto old = element;
+	  auto old = element;
     element = doc.NewElement("bsdf");
     element->SetAttribute("type", "twosided");
     element->InsertEndChild(old);
   }
- 
   
-  if(brdf.normalTex){
-	auto old = element;
-	element = doc.NewElement("bsdf");
-	element->SetAttribute("type", "normalmap");
-	
-	
+  if(brdf.normalMap.has_value()){
+    auto old = element;
+    element = doc.NewElement("bsdf");
+    element->SetAttribute("type", "normalmap");
+    
     auto texelement = element->InsertNewChildElement("texture");
     texelement->SetAttribute("name", "normalmap");
     texelement->SetAttribute("type", "bitmap");
-	
-	auto noTransformNode = texelement->InsertNewChildElement("boolean");
-	noTransformNode->SetAttribute("name", "raw");
-	noTransformNode->SetAttribute("value", "true");
-	
+    
+    auto noTransformNode = texelement->InsertNewChildElement("boolean");
+    noTransformNode->SetAttribute("name", "raw");
+    noTransformNode->SetAttribute("value", "true");
+    
     auto filenameNode = texelement->InsertNewChildElement("string");
-    std::string filename = "textures/" + fs::path(brdf.normal.texture.value()).filename().string();
+    std::string filename = "textures/" + fs::path(brdf.normalMap.value()).filename().string();
     filenameNode->SetAttribute("name", "filename");
     filenameNode->SetAttribute("value", filename.c_str());
-	
-	element->InsertEndChild(old);
+    
+    element->InsertEndChild(old);
   }
-  
   
   element->SetAttribute("id", brdf.name.c_str());
   return element;
