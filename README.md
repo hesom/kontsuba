@@ -28,6 +28,6 @@ Kontsuba in principle works with every file format that can be loaded by [Assimp
 - Non-PBR materials are simply converted by using the default BSDF parameters if no corresponding parameters where found in the input file. For example, all parameters of Phong materials are ignored, except for the diffuse color, which is used as the `base_color` parameter of the principled BSDF.
 - There are currently no command line options for converting between left/right-handed coordinate systems or flipping uv-coordinates, which might be necessary depending on the input.
 - All BSDFs are `twosided`.
-- Spectral and polarized materials and blended BSDFs are not supported yet.
+- Bump/normal mapping, spectral and polarized materials and blended BSDFs are not supported yet.
 - Custom shaded materials simply don't work. This includes [texture stacks](https://assimp.sourceforge.net/lib_html/materials.html) that are more complex than a single layer.
 - Meshes are exported as `.ply` files but the `serialized` plugin format by Mitsuba would be more efficient.
