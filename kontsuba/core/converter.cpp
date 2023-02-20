@@ -14,6 +14,7 @@
 #include <tinyply.h>
 #include <tinyxml2.h>
 #include <fmt/core.h>
+//#include <zlib.h>
 #include "principled_brdf.h"
 #include "utils.h"
 
