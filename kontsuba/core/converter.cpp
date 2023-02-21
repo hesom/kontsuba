@@ -286,32 +286,118 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   outstream_binary << fileformatHeader << fileformatVersionV4;
 
   //get all information ready for the compressed stream
-  int meshFlags = 0x0000;
+  uint32_t meshFlags = 0x0000;
 
   if (mesh->HasNormals()){
-    meshFlags += 0x0001;
+    meshFlags |= 0x0001;
   }
-  if (mesh->HasTextureCoords(0)){
-    meshFlags += 0x0002;
+  if (mesh->HasTextureCoords(0)){ //TODO for now only the one texture. Maybe more later on?
+    meshFlags |= 0x0002;
   }
   if (mesh->HasVertexColors(0)){
-    meshFlags += 0x0008;
+    meshFlags |= 0x0008;
   }
-  if (true){ //TODO for now only single precision, but check smarter later!
-    meshFlags += 0x1000;
+  if (true){ //TODO for now only single precision, but maybe be smarter later? assimp seems to use single precision only though.
+    meshFlags |= 0x1000;
   }
   
-  //std::string tmp = mesh->mName;
+  std::vector<char> enflatedData; //this has to be filled with little endian data, something that from my understanding is guaranteed by my char* cast
+  //let's reinterpret the meshFlags as a char array - needed for compression later on
+  char* meshFlagsChar = static_cast<char*>(static_cast<void*>(&meshFlags));
+  enflatedData.insert(enflatedData.end(), meshFlagsChar, meshFlagsChar + 4);
+
+  //add the name of the mesh to the data
   char* meshName = new char [mesh->mName.length];
-  //meshName = mesh->mName.C_Str(); //this is based on an assimp aiString (which is UTF-8) and therefore no more conversion needed
+  strcpy(meshName, mesh->mName.C_Str()); //this is based on an assimp aiString (which is UTF-8) and therefore no more conversion needed
+  enflatedData.insert(enflatedData.end(), meshName, meshName + mesh->mName.length);
 
-  uint64_t numVert = mesh->mNumVertices;
+  //add the number of vertices of the mesh to the data
+  uint64_t numVert = mesh->mNumVertices; 
+  char* numVertChar = static_cast<char*>(static_cast<void*>(&numVert));
+  enflatedData.insert(enflatedData.end(), numVertChar, numVertChar + 8);
+
+  //add the number of faces of the mesh to the data
   uint64_t numTri = mesh->mNumFaces;
+  char* numTriChar = static_cast<char*>(static_cast<void*>(&numTri));
+  enflatedData.insert(enflatedData.end(), numTriChar, numTriChar + 8);
 
-  //std::vector<float> vertices(mesh->mVertices, mesh->mVertices + (3 * numVert));
-  //std::vector<float> vertices(mesh->mVertices, mesh->mVertices + (2 * numVert)); //nah
+  //add all vertex positions to the data (for now only single precision)
+  char* verticesChar = static_cast<char*>(static_cast<void*>(mesh->mVertices));
+  enflatedData.insert(enflatedData.end(), verticesChar, verticesChar + sizeof(float) * numVert * 3);
 
+  //if needed, add all vertex normals
+  if (mesh->HasNormals()){
+    char* normalChar = static_cast<char*>(static_cast<void*>(mesh->mNormals));
+    enflatedData.insert(enflatedData.end(), normalChar, normalChar + sizeof(float) * numVert * 3);
+  }
+
+  //if needed, add all texture coordinates
+  if (mesh->HasTextureCoords(0)){
+    //from my understanding the mitsuba serialized format expects 2D coordinates, no 1D or 3D textures possible.
+    //TODO for now I just export them to be 2D, but this should be smarter later on. They are stored by assimp as 3D coordinates.
+    std::vector<float> textureCoords;
+    textureCoords.reserve(numVert * 2); //increase speed by preventing reallocation in the loop
+    for (int i = 0; i < numVert; i++){
+      textureCoords.push_back(mesh->mTextureCoords[0][i].x);
+      textureCoords.push_back(mesh->mTextureCoords[0][i].y);
+    }
+    char* textureCoordsChar = static_cast<char*>(static_cast<void*>(textureCoords.data()));
+    enflatedData.insert(enflatedData.end(), textureCoordsChar, textureCoordsChar + sizeof(float) * numVert * 2);
+  }
+
+  //if needed, add all vertex colors
+  if (mesh->HasVertexColors(0)) {
+      //TODO for now I just export them to be RGB, but assimp can do alpha too. Can Mitsuba as well?
+      std::vector<float> vertexColors;
+      vertexColors.reserve(numVert * 3); //increase speed by preventing reallocation in the loop
+      for (int i = 0; i < numVert; i++) {
+          vertexColors.push_back(mesh->mColors[0][i].r);
+          vertexColors.push_back(mesh->mColors[0][i].g);
+          vertexColors.push_back(mesh->mColors[0][i].b);
+      }
+      char* vertexColorsChar = static_cast<char*>(static_cast<void*>(vertexColors.data()));
+      enflatedData.insert(enflatedData.end(), vertexColorsChar, vertexColorsChar + sizeof(float) * numVert * 3);
+  }
+
+  //finally: add all index data
+  //TODO check if these are actually only triangles
+  //TODO for over uint32_max vertices this needs to use uint64
+  std::vector<uint32_t> indices;
+  indices.reserve(mesh->mNumFaces * 3);
+  for (int i = 0; i < mesh->mNumFaces; i++) {
+      indices.push_back(mesh->mFaces[i].mIndices[0]);
+      indices.push_back(mesh->mFaces[i].mIndices[1]);
+      indices.push_back(mesh->mFaces[i].mIndices[2]);
+  }
+  char* indicesChar = static_cast<char*>(static_cast<void*>(&indices[0]));
+  enflatedData.insert(enflatedData.end(), indicesChar, indicesChar + sizeof(uint32_t) * numVert * 3);
+
+  std::vector<char> deflatedData;
+  deflatedData.reserve(enflatedData.size() * 1.1); //the compressed data will of course be smaller, but zlib needs space to work
+
+  //time to prepare deflating the data
   z_stream deflateStream;
+  deflateStream.zalloc = Z_NULL;
+  deflateStream.zfree = Z_NULL;
+  deflateStream.opaque = Z_NULL;
+
+  deflateStream.avail_in = (uint32_t)enflatedData.size();
+  deflateStream.next_in = (Bytef*)enflatedData.data();
+  deflateStream.avail_out = deflatedData.capacity();
+  deflateStream.next_out = (Bytef*)deflatedData.data();
+
+  //the actual deflation
+  deflateInit(&deflateStream, Z_BEST_COMPRESSION);
+  deflate(&deflateStream, Z_FINISH);
+  deflateEnd(&deflateStream);
+
+  deflatedData.resize(deflateStream.total_out);
+  std::cout << "compressed " << deflateStream.total_in << " bytes into " << deflateStream.total_out << "bytes" << std::endl; //TODO: remove, debug
+
+  //TODO there is probably a more efficient way to do this
+  for (int i = 0; i < deflatedData.size(); i++) {
+      outstream_binary << deflatedData[i];
+  }
 
   fb_binary.close();
 
