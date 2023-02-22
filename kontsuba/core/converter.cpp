@@ -273,6 +273,8 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
                              const std::string &filename,
                              bool removeDuplicateFaces) {
   
+  //TODO remove duplicate faces
+
   std::filebuf fb_binary;
   fb_binary.open(filename, std::ios::out | std::ios::binary);
   std::ostream outstream_binary(&fb_binary);
@@ -301,6 +303,7 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
     meshFlags |= 0x1000;
   }
   
+  //TODO we can probably take a good guess for the final size of enflatedData at some points and reserve memory to stop reallocation
   std::vector<char> enflatedData; //this has to be filled with little endian data, something that from my understanding is guaranteed by my char* cast
   //let's reinterpret the meshFlags as a char array - needed for compression later on
   char* meshFlagsChar = static_cast<char*>(static_cast<void*>(&meshFlags));
@@ -394,10 +397,13 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   deflatedData.resize(deflateStream.total_out);
   std::cout << "compressed " << deflateStream.total_in << " bytes into " << deflateStream.total_out << "bytes" << std::endl; //TODO: remove, debug
 
-  //TODO there is probably a more efficient way to do this
-  for (int i = 0; i < deflatedData.size(); i++) {
-      outstream_binary << deflatedData[i];
-  }
+
+  outstream_binary.write(deflatedData.data(), deflatedData.size());
+
+  //and finally the End-of-file dictionary, uncompressed (given I understand the mitsuba docs correctly)
+  //this is very simple for now since we're only saving *one* mesh
+  outstream_binary << uint64_t(0); //offset of first mesh in file (in Bytes)
+  outstream_binary << uint32_t(1); //number of meshes in file
 
   fb_binary.close();
 
