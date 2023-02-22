@@ -303,8 +303,26 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
     meshFlags |= 0x1000;
   }
   
-  //TODO we can probably take a good guess for the final size of enflatedData at some points and reserve memory to stop reallocation
   std::vector<char> enflatedData; //this has to be filled with little endian data, something that from my understanding is guaranteed by my char* cast
+  
+  //estimate size enflatedData will need
+  uint64_t size = 20 + mesh->mName.length; //flags, numVert, numTri and name
+  size += sizeof(float) * mesh->mNumVertices * 3;
+  if (mesh->HasNormals()) {
+      size += sizeof(float) * mesh->mNumVertices * 3;
+  }
+  if (mesh->HasTextureCoords(0)) {
+      size += sizeof(float) * mesh->mNumVertices * 2;
+  }
+  if (mesh->HasVertexColors(0)) {
+      size += sizeof(float) * mesh->mNumVertices * 3;
+  }
+  size += sizeof(int32_t) * mesh->mNumFaces * 3; //finally indices
+
+  enflatedData.reserve(size); //this should prevent enflatedData ever needing a reallocation
+
+
+
   //let's reinterpret the meshFlags as a char array - needed for compression later on
   char* meshFlagsChar = static_cast<char*>(static_cast<void*>(&meshFlags));
   enflatedData.insert(enflatedData.end(), meshFlagsChar, meshFlagsChar + 4);
