@@ -17,6 +17,7 @@
 #include <zlib.h>
 #include "principled_brdf.h"
 #include "utils.h"
+#include <bitset>
 
 namespace Kontsuba {
 using namespace tinyxml2;
@@ -283,9 +284,13 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   }
 
   uint16_t fileformatHeader = 0x041C;
-  uint16_t fileformatVersionV4 = 0x0004;
+  char* fileformatHeaderChar = static_cast<char*>(static_cast<void*>(&fileformatHeader));
 
-  outstream_binary << fileformatHeader << fileformatVersionV4;
+  uint16_t fileformatVersionV4 = 0x0004;
+  char* fileformatVersionV4Char = static_cast<char*>(static_cast<void*>(&fileformatVersionV4));
+
+  outstream_binary.write(fileformatHeaderChar, 2);
+  outstream_binary.write(fileformatVersionV4Char, 2);
 
   //get all information ready for the compressed stream
   uint32_t meshFlags = 0x0000;
@@ -393,6 +398,8 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   char* indicesChar = static_cast<char*>(static_cast<void*>(&indices[0]));
   enflatedData.insert(enflatedData.end(), indicesChar, indicesChar + sizeof(uint32_t) * numVert * 3);
 
+
+
   std::vector<char> deflatedData;
   deflatedData.reserve(enflatedData.size() * 1.1); //the compressed data will of course be smaller, but zlib needs space to work
 
@@ -411,6 +418,18 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   deflateInit(&deflateStream, Z_BEST_COMPRESSION);
   deflate(&deflateStream, Z_FINISH);
   deflateEnd(&deflateStream);
+  
+  
+  /*
+  //looking at the deflated data
+  std::cout << "some data from deflatedData: ";
+  for (int i = 0; i < 100; i++) {
+      std::cout << std::bitset<8>(deflatedData[i]) << " ";
+  }
+  std::cout << std::endl;
+  */
+  //the deflated data is not empty, but it does not get saved. Why??
+
 
   deflatedData.resize(deflateStream.total_out);
   std::cout << "compressed " << deflateStream.total_in << " bytes into " << deflateStream.total_out << "bytes" << std::endl; //TODO: remove, debug
@@ -420,8 +439,13 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
 
   //and finally the End-of-file dictionary, uncompressed (given I understand the mitsuba docs correctly)
   //this is very simple for now since we're only saving *one* mesh
-  outstream_binary << uint64_t(0); //offset of first mesh in file (in Bytes)
-  outstream_binary << uint32_t(1); //number of meshes in file
+  uint64_t firstMeshOffset = 0;
+  char* firstMeshOffsetChar = static_cast<char*>(static_cast<void*>(&firstMeshOffset));
+  outstream_binary.write(firstMeshOffsetChar, 8);
+
+  uint32_t meshCount = 1;
+  char* meshCountChar = static_cast<char*>(static_cast<void*>(&meshCount));
+  outstream_binary.write(meshCountChar, 4);
 
   fb_binary.close();
 
