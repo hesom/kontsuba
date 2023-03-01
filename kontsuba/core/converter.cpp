@@ -401,7 +401,9 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
 
 
   std::vector<char> deflatedData;
-  deflatedData.reserve(enflatedData.size() * 1.1); //the compressed data will of course be smaller, but zlib needs space to work
+  deflatedData.resize(enflatedData.size() * 1.1); //the compressed data will of course be smaller, but zlib needs space to work
+  //also this gets resized and not reserved because if we resize later on after zlib put compressed data into in,
+  //the vector does not know this, assumes size = 0 and overwrites all data with default insertible
 
   //time to prepare deflating the data
   z_stream deflateStream;
@@ -420,6 +422,9 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   deflateEnd(&deflateStream);
   
   
+  
+  deflatedData.resize(deflateStream.total_out);
+  
   /*
   //looking at the deflated data
   std::cout << "some data from deflatedData: ";
@@ -428,11 +433,8 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   }
   std::cout << std::endl;
   */
-  //the deflated data is not empty, but it does not get saved. Why??
 
-
-  deflatedData.resize(deflateStream.total_out);
-  std::cout << "compressed " << deflateStream.total_in << " bytes into " << deflateStream.total_out << "bytes" << std::endl; //TODO: remove, debug
+  //std::cout << "compressed " << deflateStream.total_in << " bytes into " << deflateStream.total_out << "bytes" << std::endl; //TODO: remove, debug
 
 
   outstream_binary.write(deflatedData.data(), deflatedData.size());
