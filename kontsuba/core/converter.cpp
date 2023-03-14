@@ -292,6 +292,8 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   outstream_binary.write(fileformatHeaderChar, 2);
   outstream_binary.write(fileformatVersionV4Char, 2);
 
+  //note: all this get's read correctly until at least here
+
   //get all information ready for the compressed stream
   uint32_t meshFlags = 0x0000;
 
@@ -307,11 +309,11 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   if (true){ //TODO for now only single precision, but maybe be smarter later? assimp seems to use single precision only though.
     meshFlags |= 0x1000;
   }
-  
+
   std::vector<char> enflatedData; //this has to be filled with little endian data, something that from my understanding is guaranteed by my char* cast
   
   //estimate size enflatedData will need
-  uint64_t size = 20 + mesh->mName.length; //flags, numVert, numTri and name
+  uint64_t size = 20 + mesh->mName.length + 1; //flags, numVert, numTri and name
   size += sizeof(float) * mesh->mNumVertices * 3;
   if (mesh->HasNormals()) {
       size += sizeof(float) * mesh->mNumVertices * 3;
@@ -333,9 +335,10 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   enflatedData.insert(enflatedData.end(), meshFlagsChar, meshFlagsChar + 4);
 
   //add the name of the mesh to the data
-  char* meshName = new char [mesh->mName.length];
+  char* meshName = new char [mesh->mName.length + 1]; //an aiString length excludes the terminal 0, but Mitsuba wants it
   strcpy(meshName, mesh->mName.C_Str()); //this is based on an assimp aiString (which is UTF-8) and therefore no more conversion needed
-  enflatedData.insert(enflatedData.end(), meshName, meshName + mesh->mName.length);
+  //std::cout << "last c string character: " << meshName[strlen(meshName) - 1] << std::endl;
+  enflatedData.insert(enflatedData.end(), meshName, meshName + mesh->mName.length + 1);
 
   //add the number of vertices of the mesh to the data
   uint64_t numVert = mesh->mNumVertices; 
@@ -395,8 +398,9 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
       indices.push_back(mesh->mFaces[i].mIndices[1]);
       indices.push_back(mesh->mFaces[i].mIndices[2]);
   }
+
   char* indicesChar = static_cast<char*>(static_cast<void*>(&indices[0]));
-  enflatedData.insert(enflatedData.end(), indicesChar, indicesChar + sizeof(uint32_t) * numVert * 3);
+  enflatedData.insert(enflatedData.end(), indicesChar, indicesChar + sizeof(uint32_t) * numTri * 3);
 
 
 
@@ -424,17 +428,6 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   
   
   deflatedData.resize(deflateStream.total_out);
-  
-  /*
-  //looking at the deflated data
-  std::cout << "some data from deflatedData: ";
-  for (int i = 0; i < 100; i++) {
-      std::cout << std::bitset<8>(deflatedData[i]) << " ";
-  }
-  std::cout << std::endl;
-  */
-
-  //std::cout << "compressed " << deflateStream.total_in << " bytes into " << deflateStream.total_out << "bytes" << std::endl; //TODO: remove, debug
 
 
   outstream_binary.write(deflatedData.data(), deflatedData.size());
@@ -511,14 +504,14 @@ void Converter::convert() {
     aiMesh *mesh = scene->mMeshes[i];
 
     aiString name;
-    auto plyName = m_outputMeshPath / ("mesh" + std::to_string(i) + ".ply");
+    auto plyName = m_outputMeshPath / ("mesh" + std::to_string(i) + ".serialized");
     scene->mMaterials[mesh->mMaterialIndex]->Get(AI_MATKEY_NAME, name);
     std::string plySceneFileName = "meshes/" + plyName.filename().string();
 
     try {
-      writeMeshPly(mesh, plyName.string());
+      writeMeshSerialized(mesh, plyName.string());
       auto meshNode = m_xmlDoc.NewElement("shape");
-      meshNode->SetAttribute("type", "ply");
+      meshNode->SetAttribute("type", "serialized");
       auto filenameNode =
           constructNode("string", "filename", plySceneFileName.c_str());
       meshNode->InsertEndChild(filenameNode);
