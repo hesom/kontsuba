@@ -17,7 +17,6 @@
 #include <zlib.h>
 #include "principled_brdf.h"
 #include "utils.h"
-#include <bitset>
 
 namespace Kontsuba {
 using namespace tinyxml2;
