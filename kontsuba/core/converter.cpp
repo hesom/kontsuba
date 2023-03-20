@@ -52,8 +52,10 @@ private:
   XMLElement *defaultSensor();
   XMLElement *defaultLighting();
   XMLElement *materialToBSDFNode(const aiMaterial *material);
+  void duplicateFaceRemover(std::vector<uint32_t>& indices, std::vector<aiVector3D>& vertices);
   void writeMeshPly(const aiMesh *mesh, const std::string &path, bool removeDuplicateFaces = false);
   void writeMeshSerialized(const aiMesh *mesh, const std::string &path, bool removeDuplicateFaces = false);
+  
 
   auto constructNode(const std::string &type, const std::string &name,
                      const std::string &value) {
@@ -125,6 +127,82 @@ XMLElement *Converter::defaultSensor() {
   return sensorNode;
 }
 
+void Converter::duplicateFaceRemover(std::vector<uint32_t> &indices, std::vector<aiVector3D> &vertices) {
+    using FaceData = std::tuple<uint32_t, uint32_t, uint32_t>; // indices
+
+    std::vector<FaceData> faces;
+    for (int i = 0; i < indices.size(); i += 3) {
+        faces.push_back({ indices[i], indices[i + 1], indices[i + 2] });
+    }
+
+    auto equal = [&](const FaceData& f1, const FaceData& f2) {
+        float epsilon = 0.0001f;
+        auto [i1, i2, i3] = f1;
+        auto [j1, j2, j3] = f2;
+
+        // get vertices from indices
+        auto v1 = vertices[i1];
+        auto v2 = vertices[i2];
+        auto v3 = vertices[i3];
+
+        auto w1 = vertices[j1];
+        auto w2 = vertices[j2];
+        auto w3 = vertices[j3];
+
+        auto test = [=](const aiVector3D& v, const aiVector3D& w) {
+            return abs(v.x - w.x) < epsilon && abs(v.y - w.y) < epsilon &&
+                abs(v.z - w.z) < epsilon;
+        };
+
+        // test distance smaller than epsilon for every permutation (3! = 6)
+        if (test(v1, w1) && test(v2, w2) && test(v3, w3)) {
+            return true;
+        }
+        if (test(v1, w1) && test(v2, w3) && test(v3, w2)) {
+            return true;
+        }
+        if (test(v1, w2) && test(v2, w1) && test(v3, w3)) {
+            return true;
+        }
+        if (test(v1, w2) && test(v2, w3) && test(v3, w1)) {
+            return true;
+        }
+        if (test(v1, w3) && test(v2, w1) && test(v3, w2)) {
+            return true;
+        }
+        if (test(v1, w3) && test(v2, w2) && test(v3, w1)) {
+            return true;
+        }
+
+        return false;
+    };
+
+    auto hash = [&](const FaceData& f) {
+        auto [i1, i2, i3] = f;
+        auto v1 = vertices[i1];
+        auto v2 = vertices[i2];
+        auto v3 = vertices[i3];
+
+        return std::hash<float>()(v1.x) ^ std::hash<float>()(v1.y) ^
+            std::hash<float>()(v1.z) ^ std::hash<float>()(v2.x) ^
+            std::hash<float>()(v2.y) ^ std::hash<float>()(v2.z) ^
+            std::hash<float>()(v3.x) ^ std::hash<float>()(v3.y) ^
+            std::hash<float>()(v3.z);
+    };
+
+    using FaceSet = std::unordered_set<FaceData, decltype(hash), decltype(equal)>;
+    FaceSet faceSet(faces.begin(), faces.end(), 0, hash, equal);
+
+    std::vector<uint32_t> uniqueIndices;
+    for (const auto& face : faceSet) {
+        auto [i1, i2, i3] = face;
+        uniqueIndices.push_back(i1);
+        uniqueIndices.push_back(i2);
+        uniqueIndices.push_back(i3);
+    }
+    indices = uniqueIndices;
+}
+
 void Converter::writeMeshPly(const aiMesh *mesh,
                              const std::string &filename,
                              bool removeDuplicateFaces) {
@@ -162,79 +240,7 @@ void Converter::writeMeshPly(const aiMesh *mesh,
   }
 
   if (removeDuplicateFaces) {
-    using FaceData = std::tuple<uint32_t, uint32_t, uint32_t>; // indices
-
-    std::vector<FaceData> faces;
-    for (int i = 0; i < indices.size(); i += 3) {
-      faces.push_back({indices[i], indices[i + 1], indices[i + 2]});
-    }
-
-    auto equal = [&](const FaceData &f1, const FaceData &f2) {
-      float epsilon = 0.0001f;
-      auto [i1, i2, i3] = f1;
-      auto [j1, j2, j3] = f2;
-
-      // get vertices from indices
-      auto v1 = vertices[i1];
-      auto v2 = vertices[i2];
-      auto v3 = vertices[i3];
-
-      auto w1 = vertices[j1];
-      auto w2 = vertices[j2];
-      auto w3 = vertices[j3];
-
-      auto test = [=](const aiVector3D &v, const aiVector3D &w) {
-        return abs(v.x - w.x) < epsilon && abs(v.y - w.y) < epsilon &&
-              abs(v.z - w.z) < epsilon;
-      };
-
-      // test distance smaller than epsilon for every permutation (3! = 6)
-      if (test(v1, w1) && test(v2, w2) && test(v3, w3)) {
-        return true;
-      }
-      if (test(v1, w1) && test(v2, w3) && test(v3, w2)) {
-        return true;
-      }
-      if (test(v1, w2) && test(v2, w1) && test(v3, w3)) {
-        return true;
-      }
-      if (test(v1, w2) && test(v2, w3) && test(v3, w1)) {
-        return true;
-      }
-      if (test(v1, w3) && test(v2, w1) && test(v3, w2)) {
-        return true;
-      }
-      if (test(v1, w3) && test(v2, w2) && test(v3, w1)) {
-        return true;
-      }
-
-      return false;
-    };
-
-    auto hash = [&](const FaceData &f) {
-      auto [i1, i2, i3] = f;
-      auto v1 = vertices[i1];
-      auto v2 = vertices[i2];
-      auto v3 = vertices[i3];
-
-      return std::hash<float>()(v1.x) ^ std::hash<float>()(v1.y) ^
-            std::hash<float>()(v1.z) ^ std::hash<float>()(v2.x) ^
-            std::hash<float>()(v2.y) ^ std::hash<float>()(v2.z) ^
-            std::hash<float>()(v3.x) ^ std::hash<float>()(v3.y) ^
-            std::hash<float>()(v3.z);
-    };
-
-    using FaceSet = std::unordered_set<FaceData, decltype(hash), decltype(equal)>;
-    FaceSet faceSet(faces.begin(), faces.end(), 0, hash, equal);
-
-    std::vector<uint32_t> uniqueIndices;
-    for (const auto &face : faceSet) {
-      auto [i1, i2, i3] = face;
-      uniqueIndices.push_back(i1);
-      uniqueIndices.push_back(i2);
-      uniqueIndices.push_back(i3);
-    }
-    indices = uniqueIndices;
+      duplicateFaceRemover(indices, vertices);
   }
 
   meshFile.add_properties_to_element(
@@ -300,17 +306,15 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   if (mesh->HasNormals()){
     meshFlags |= 0x0001;
   }
-  if (mesh->HasTextureCoords(0)){ //TODO for now only the one texture. Maybe more later on?
-    meshFlags |= 0x0002;
+  if (mesh->HasTextureCoords(0) && mesh->mNumUVComponents[0] == 2) { //Mitsuba can only do 2D tex coords therefore we will only load any if they are 2D
+    meshFlags |= 0x0002; //additionally only one set of UV coordinates is possible for a shape in Mitsuba, we'll take the first
   }
   if (mesh->HasVertexColors(0)){
     meshFlags |= 0x0008;
   }
-  if (true){ //TODO for now only single precision, but maybe be smarter later? assimp seems to use single precision only though.
-    meshFlags |= 0x1000;
-  }
+  meshFlags |= 0x1000; //this makes everything single precision (Mitsuba could work with dp, but assimp not)
 
-  std::vector<char> enflatedData; //this has to be filled with little endian data, something that from my understanding is guaranteed by my char* cast
+  std::vector<char> enflatedData; //this has to be filled with little endian data; guaranteed by my char* cast
   
   //estimate size enflatedData will need
   uint64_t size = 20 + mesh->mName.length + 1; //flags, numVert, numTri and name
@@ -318,19 +322,17 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   if (mesh->HasNormals()) {
       size += sizeof(float) * mesh->mNumVertices * 3;
   }
-  if (mesh->HasTextureCoords(0)) {
+  if (mesh->HasTextureCoords(0) && mesh->mNumUVComponents[0] == 2) {
       size += sizeof(float) * mesh->mNumVertices * 2;
   }
   if (mesh->HasVertexColors(0)) {
       size += sizeof(float) * mesh->mNumVertices * 3;
   }
-  size += sizeof(int32_t) * mesh->mNumFaces * 3; //finally indices
+  size += sizeof(int32_t) * mesh->mNumFaces * 3;
 
-  enflatedData.reserve(size); //this should prevent enflatedData ever needing a reallocation
+  enflatedData.reserve(size); //this should hopefully prevent enflatedData ever needing a reallocation
 
 
-
-  //let's reinterpret the meshFlags as a char array - needed for compression later on
   char* meshFlagsChar = static_cast<char*>(static_cast<void*>(&meshFlags));
   enflatedData.insert(enflatedData.end(), meshFlagsChar, meshFlagsChar + 4);
 
@@ -361,11 +363,10 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   }
 
   //if needed, add all texture coordinates
-  if (mesh->HasTextureCoords(0)){
-    //from my understanding the mitsuba serialized format expects 2D coordinates, no 1D or 3D textures possible.
-    //TODO for now I just export them to be 2D, but this should be smarter later on. They are stored by assimp as 3D coordinates.
+  if (mesh->HasTextureCoords(0) && mesh->mNumUVComponents[0] == 2){
+    //Mitsuba expects 2D coordinates, no 1D or 3D textures possible.
     std::vector<float> textureCoords;
-    textureCoords.reserve(numVert * 2); //increase speed by preventing reallocation in the loop
+    textureCoords.reserve(numVert * 2);
     for (int i = 0; i < numVert; i++){
       textureCoords.push_back(mesh->mTextureCoords[0][i].x);
       textureCoords.push_back(mesh->mTextureCoords[0][i].y);
@@ -376,9 +377,9 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
 
   //if needed, add all vertex colors
   if (mesh->HasVertexColors(0)) {
-      //TODO for now I just export them to be RGB, but assimp can do alpha too. Can Mitsuba as well?
+      //note: assimp can do rgba, Mitsuba only rgb
       std::vector<float> vertexColors;
-      vertexColors.reserve(numVert * 3); //increase speed by preventing reallocation in the loop
+      vertexColors.reserve(numVert * 3);
       for (int i = 0; i < numVert; i++) {
           vertexColors.push_back(mesh->mColors[0][i].r);
           vertexColors.push_back(mesh->mColors[0][i].g);
@@ -389,14 +390,21 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   }
 
   //finally: add all index data
-  //TODO check if these are actually only triangles
-  //TODO for over uint32_max vertices this needs to use uint64
+  //for over uint32_max vertices this would need to use uint64 BUT assimp's maximum vertex count is 2^31-1
   std::vector<uint32_t> indices;
   indices.reserve(mesh->mNumFaces * 3);
   for (int i = 0; i < mesh->mNumFaces; i++) {
       indices.push_back(mesh->mFaces[i].mIndices[0]);
       indices.push_back(mesh->mFaces[i].mIndices[1]);
       indices.push_back(mesh->mFaces[i].mIndices[2]);
+  }
+
+  if (removeDuplicateFaces) {
+      std::vector<aiVector3D> vertices;
+      for (unsigned int i = 0; i < mesh->mNumVertices; i++) {
+          vertices.push_back({ mesh->mVertices[i].x, mesh->mVertices[i].y, mesh->mVertices[i].z });
+      }
+      duplicateFaceRemover(indices, vertices);
   }
 
   char* indicesChar = static_cast<char*>(static_cast<void*>(&indices[0]));
@@ -425,10 +433,7 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   deflate(&deflateStream, Z_FINISH);
   deflateEnd(&deflateStream);
   
-  
-  
   deflatedData.resize(deflateStream.total_out);
-
 
   outstream_binary.write(deflatedData.data(), deflatedData.size());
 
@@ -504,14 +509,14 @@ void Converter::convert() {
     aiMesh *mesh = scene->mMeshes[i];
 
     aiString name;
-    auto plyName = m_outputMeshPath / ("mesh" + std::to_string(i) + ".serialized");
+    auto plyName = m_outputMeshPath / ("mesh" + std::to_string(i) + ".ply");
     scene->mMaterials[mesh->mMaterialIndex]->Get(AI_MATKEY_NAME, name);
     std::string plySceneFileName = "meshes/" + plyName.filename().string();
 
     try {
-      writeMeshSerialized(mesh, plyName.string());
+      writeMeshPly(mesh, plyName.string());
       auto meshNode = m_xmlDoc.NewElement("shape");
-      meshNode->SetAttribute("type", "serialized");
+      meshNode->SetAttribute("type", "ply");
       auto filenameNode =
           constructNode("string", "filename", plySceneFileName.c_str());
       meshNode->InsertEndChild(filenameNode);
