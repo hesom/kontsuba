@@ -278,8 +278,6 @@ void Converter::writeMeshPly(const aiMesh *mesh,
 void Converter::writeMeshSerialized(const aiMesh *mesh,
                              const std::string &filename,
                              bool removeDuplicateFaces) {
-  
-  //TODO remove duplicate faces
 
   std::filebuf fb_binary;
   fb_binary.open(filename, std::ios::out | std::ios::binary);
@@ -296,8 +294,6 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
 
   outstream_binary.write(fileformatHeaderChar, 2);
   outstream_binary.write(fileformatVersionV4Char, 2);
-
-  //note: all this get's read correctly until at least here
 
   //get all information ready for the compressed stream
   uint32_t meshFlags = 0x0000;
@@ -338,7 +334,6 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
   //add the name of the mesh to the data
   char* meshName = new char [mesh->mName.length + 1]; //an aiString length excludes the terminal 0, but Mitsuba wants it
   strcpy(meshName, mesh->mName.C_Str()); //this is based on an assimp aiString (which is UTF-8) and therefore no more conversion needed
-  //std::cout << "last c string character: " << meshName[strlen(meshName) - 1] << std::endl;
   enflatedData.insert(enflatedData.end(), meshName, meshName + mesh->mName.length + 1);
 
   //add the number of vertices of the mesh to the data
