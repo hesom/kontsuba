@@ -25,9 +25,10 @@ namespace fs = std::filesystem;
 class Converter {
 public:
   Converter(const std::string &inputFile,
-                 const std::string &outputDirectory)
+                 const std::string &outputDirectory, const unsigned int &flags)
       : m_inputFile(inputFile), m_outputDirectory(outputDirectory),
         m_importer(), m_xmlDoc() {
+    importingFlags = flags;
     m_fromDir = fs::canonical(expand(inputFile));
     if (!fs::is_directory(m_fromDir)) {
       m_fromDir = m_fromDir.parent_path();
@@ -73,6 +74,7 @@ private:
   fs::path m_outputMeshPath;
   fs::path m_outputTexturePath;
   fs::path m_outputSceneDescPath;
+  unsigned int importingFlags;
 };
 
 XMLElement *Converter::defaultIntegrator() {
@@ -333,6 +335,7 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
 
   //add the name of the mesh to the data
   char* meshName = new char [mesh->mName.length + 1]; //an aiString length excludes the terminal 0, but Mitsuba wants it
+  //TODO strcpy is unsafe, replace with strcpy_s or smth like that
   strcpy(meshName, mesh->mName.C_Str()); //this is based on an assimp aiString (which is UTF-8) and therefore no more conversion needed
   enflatedData.insert(enflatedData.end(), meshName, meshName + mesh->mName.length + 1);
 
@@ -448,6 +451,16 @@ void Converter::writeMeshSerialized(const aiMesh *mesh,
 }
 
 void Converter::convert() {
+
+  unsigned int aiFlags = 0;
+
+  if ((importingFlags & 0x1) > 0)
+      aiFlags |= aiProcess_MakeLeftHanded;
+  if ((importingFlags & 0x2) > 0)
+      aiFlags |= aiProcess_FlipUVs;
+
+  std::cout << aiFlags << std::endl;
+
   // clang-format off
   const aiScene *scene = m_importer.ReadFile(m_inputFile.string(),
     aiProcess_Triangulate           |
@@ -455,9 +468,10 @@ void Converter::convert() {
     aiProcess_FindDegenerates       |
     aiProcess_FixInfacingNormals    |
     aiProcess_PreTransformVertices  |
-    aiProcess_FlipUVs               |
+    //aiProcess_FlipUVs             |
     aiProcess_TransformUVCoords     |
-    aiProcess_SortByPType
+    aiProcess_SortByPType           |
+    aiFlags
   );
   // clang-format on
 
@@ -486,6 +500,9 @@ void Converter::convert() {
 
   // loop over all materials in scene
   for (size_t i = 0; i < scene->mNumMaterials; i++) {
+    int materialType = 0;
+    scene->mMaterials[i]->Get(AI_MATKEY_SHADING_MODEL, materialType);
+    //std::cout << "brdf is: " << materialType << std::endl;
     auto brdf = PrincipledBRDF::fromMaterial(scene->mMaterials[i], true);
     auto materialNode = toXML(m_xmlDoc, brdf);
     m_xmlRoot->InsertEndChild(materialNode);
@@ -528,8 +545,8 @@ void Converter::convert() {
   m_xmlDoc.SaveFile(m_outputSceneDescPath.string().c_str());
 }
 
-void convert(const std::string &inputFile, const std::string &outputDirectory) {
-  Converter converter(inputFile, outputDirectory);
+void convert(const std::string &inputFile, const std::string &outputDirectory, const unsigned int flags) {
+  Converter converter(inputFile, outputDirectory, flags);
   converter.convert();
 }
 

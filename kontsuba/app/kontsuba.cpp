@@ -12,6 +12,10 @@ int main(int argc, char const *argv[]) {
   args::Positional<std::string> input(required, "input", "Input file");
   args::Positional<std::string> output(required, "output", "Output directory");
   args::CompletionFlag completion(parser, {"complete"});
+  args::Group optional(parser,
+                       "Optional arguments:", args::Group::Validators::DontCare);
+  args::Flag switchHandedness(optional, "switchHandedness", "Switch handedness of imported scene", {"hand", "handed", "handedness"});
+  args::Flag switchUV(optional, "switchUV", "Switch UV coordinate origin to top left", {"uv"});
 
   try {
     parser.ParseCLI(argc, argv);
@@ -31,10 +35,18 @@ int main(int argc, char const *argv[]) {
     return 1;
   }
 
+  unsigned int flags = 0;
+  if (args::get(switchHandedness)) {
+      flags |= 0x1;
+  }
+  if (args::get(switchUV)) {
+      flags |= 0x2;
+  }
+
   const std::string path = args::get(input);
   const std::string outputDir = args::get(output);
 
-  Kontsuba::convert(path, outputDir);
+  Kontsuba::convert(path, outputDir, flags);
 
   return 0;
 }
