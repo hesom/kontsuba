@@ -454,12 +454,10 @@ void Converter::convert() {
 
   unsigned int aiFlags = 0;
 
-  if ((importingFlags & 0x1) > 0)
+  if ((importingFlags & konSwitchHandedness) > 0)
       aiFlags |= aiProcess_MakeLeftHanded;
-  if ((importingFlags & 0x2) > 0)
+  if ((importingFlags & konSwitchUV) > 0)
       aiFlags |= aiProcess_FlipUVs;
-
-  std::cout << aiFlags << std::endl;
 
   // clang-format off
   const aiScene *scene = m_importer.ReadFile(m_inputFile.string(),
@@ -498,12 +496,14 @@ void Converter::convert() {
   backgroundNode->InsertEndChild(backgroundIntensityNode);
   m_xmlRoot->InsertEndChild(backgroundNode);
 
+  bool forceTwoSided = importingFlags & konForceTwoSided;
+
   // loop over all materials in scene
   for (size_t i = 0; i < scene->mNumMaterials; i++) {
-    int materialType = 0;
-    scene->mMaterials[i]->Get(AI_MATKEY_SHADING_MODEL, materialType);
-    //std::cout << "brdf is: " << materialType << std::endl;
-    auto brdf = PrincipledBRDF::fromMaterial(scene->mMaterials[i], true);
+    bool twoSided;
+    scene->mMaterials[i]->Get(AI_MATKEY_TWOSIDED, twoSided);
+
+    auto brdf = PrincipledBRDF::fromMaterial(scene->mMaterials[i], twoSided || forceTwoSided);
     auto materialNode = toXML(m_xmlDoc, brdf);
     m_xmlRoot->InsertEndChild(materialNode);
 

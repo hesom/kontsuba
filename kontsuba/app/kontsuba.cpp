@@ -16,6 +16,7 @@ int main(int argc, char const *argv[]) {
                        "Optional arguments:", args::Group::Validators::DontCare);
   args::Flag switchHandedness(optional, "switchHandedness", "Switch handedness of imported scene", {"hand", "handed", "handedness"});
   args::Flag switchUV(optional, "switchUV", "Switch UV coordinate origin to top left", {"uv"});
+  args::Flag forceTwoSided(optional, "forceTwoSided", "Forcably turn off backface culling", {"ts", "2s", "twosided"});
 
   try {
     parser.ParseCLI(argc, argv);
@@ -37,10 +38,13 @@ int main(int argc, char const *argv[]) {
 
   unsigned int flags = 0;
   if (args::get(switchHandedness)) {
-      flags |= 0x1;
+      flags |= konSwitchHandedness;
   }
   if (args::get(switchUV)) {
-      flags |= 0x2;
+      flags |= konSwitchUV;
+  }
+  if (args::get(forceTwoSided)) {
+      flags |= konForceTwoSided;
   }
 
   const std::string path = args::get(input);
