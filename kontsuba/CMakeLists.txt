@@ -3,7 +3,7 @@
 add_library(kontsuba_core STATIC
     core/converter.cpp
 )
-find_package(ZLIB REQUIRED)
+#find_package(ZLIB REQUIRED)
 target_include_directories(kontsuba_core
     PUBLIC core/include
     PRIVATE core/include/kontsuba # shortcut for internal includes
@@ -13,7 +13,7 @@ target_link_libraries(kontsuba_core
     PRIVATE tinyxml2
     PRIVATE tinyply
     PRIVATE fmt
-    PRIVATE ZLIB::ZLIB
+    PRIVATE ${ZLIB_LIBRARIES}
 )
 set_property(TARGET kontsuba_core PROPERTY CXX_STANDARD 17)
 set_property(TARGET kontsuba_core PROPERTY POSITION_INDEPENDENT_CODE ON)

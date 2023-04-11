@@ -503,6 +503,18 @@ void Converter::convert() {
     bool twoSided;
     scene->mMaterials[i]->Get(AI_MATKEY_TWOSIDED, twoSided);
 
+    // this is now only a backup plan, I got something better
+    /*
+    int materialType = 0;
+    scene->mMaterials[i]->Get(AI_MATKEY_SHADING_MODEL, materialType);
+    std::cout << "brdf is: " << materialType << std::endl;
+
+    // this might be improved for blinn phong models using http://simonstechblog.blogspot.com/2011/12/microfacet-brdf.html
+    // to approximate the beckmann roughness m using the blinn phong shininess a using m = sqrt(2/(a+2))
+    // and then choosing the rough plastic material in mitsuba.
+    // this will not be perfect but probably much closer than the current standard principled model with base color change
+    */
+
     auto brdf = PrincipledBRDF::fromMaterial(scene->mMaterials[i], twoSided || forceTwoSided);
     auto materialNode = toXML(m_xmlDoc, brdf);
     m_xmlRoot->InsertEndChild(materialNode);
