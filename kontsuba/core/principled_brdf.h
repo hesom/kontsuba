@@ -89,7 +89,7 @@ struct PrincipledBRDF {
   BRDF_PARAM(flatness, Float, 0.0);
   BRDF_PARAM(clearcoat, Float, 0.0);
   BRDF_PARAM(clearcoat_gloss, Float, 0.0);
-  //BRDF_PARAM(eta, Float, 0.0);
+  BRDF_PARAM(eta, Float, 0.0);
 
   std::optional<Texture> normalMap;
   std::optional<Texture> bumpMap;
@@ -123,7 +123,7 @@ struct PrincipledBRDF {
     auto clearCoat =            probeMaterialProperty<Float>(material, AI_MATKEY_CLEARCOAT_FACTOR);
     auto clearCoatRoughness =   probeMaterialProperty<Float>(material, AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR);
     auto specularFactor =       probeMaterialProperty<Float>(material, AI_MATKEY_SPECULAR_FACTOR);
-    //auto ior =                  probeMaterialProperty<Float>(material, AI_MATKEY_REFRACTI);
+    auto ior =                  probeMaterialProperty<Float>(material, AI_MATKEY_REFRACTI);
 
     /*
     std::cout << "-------------------------------------------" << std::endl;
@@ -145,11 +145,15 @@ struct PrincipledBRDF {
     
     // get potentially interesting values (if they exist) for the conversion
     auto objIllum =             probeMaterialProperty<int>(material, AI_MATKEY_OBJ_ILLUM);
-    objIllum = std::nullopt;
+    //objIllum = std::nullopt;
+
+    if (ior.has_value()) {
+        std::cout << "EVA VALUE!!!! " << ior.value() << std::endl;
+    }
 
     if (objIllum.has_value()) {
 
-        std::cout << "big lmao" << std::endl;
+        std::cout << "big lmao ILLUM: " << objIllum.value() << std::endl;
 
         bool do_highlight = false;
         bool do_transparency = false;
@@ -274,7 +278,7 @@ struct PrincipledBRDF {
     set_if(sheenFactor, brdf.sheen.value);
     set_if(clearCoat, brdf.clearcoat.value);
     set_if(clearCoatRoughness, brdf.clearcoat_gloss.value);
-    //set_if(ior, brdf.eta.value);
+    set_if(ior, brdf.eta.value);
 
     // Get all possible texture paths (these are all optional)
     auto diffuseTexture =       probeMaterialTexture(material, aiTextureType_DIFFUSE);
@@ -366,7 +370,13 @@ XMLElement* toXML(XMLDocument& doc, const PrincipledBRDF& brdf){
   element->InsertEndChild(toXML(doc, brdf.roughness));
   element->InsertEndChild(toXML(doc, brdf.anisotropic));
   element->InsertEndChild(toXML(doc, brdf.metallic));
-  element->InsertEndChild(toXML(doc, brdf.specular));
+  // mitsuba will not take specular and eta at the same time.
+  if (brdf.eta.value > 0.9) {
+    element->InsertEndChild(toXML(doc, brdf.eta));
+  }
+  else {
+    element->InsertEndChild(toXML(doc, brdf.specular));
+  }
   element->InsertEndChild(toXML(doc, brdf.sheen));
   element->InsertEndChild(toXML(doc, brdf.sheen_tint));
   element->InsertEndChild(toXML(doc, brdf.flatness));
