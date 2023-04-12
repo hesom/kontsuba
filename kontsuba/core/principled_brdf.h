@@ -4,10 +4,13 @@
 #include <filesystem>
 #include <set>
 #include <random>
+#include <algorithm>
+#include <iostream>
 
 #include <assimp/scene.h>
 #include <fmt/format.h>
 #include <tinyxml2.h>
+#include <assimp/ObjMaterial.h>
 
 using Spectrum = aiColor3D;
 using Float = float;
@@ -86,6 +89,7 @@ struct PrincipledBRDF {
   BRDF_PARAM(flatness, Float, 0.0);
   BRDF_PARAM(clearcoat, Float, 0.0);
   BRDF_PARAM(clearcoat_gloss, Float, 0.0);
+  BRDF_PARAM(eta, Float, 0.0);
 
   std::optional<Texture> normalMap;
   std::optional<Texture> bumpMap;
@@ -119,6 +123,132 @@ struct PrincipledBRDF {
     auto clearCoat =            probeMaterialProperty<Float>(material, AI_MATKEY_CLEARCOAT_FACTOR);
     auto clearCoatRoughness =   probeMaterialProperty<Float>(material, AI_MATKEY_CLEARCOAT_ROUGHNESS_FACTOR);
     auto specularFactor =       probeMaterialProperty<Float>(material, AI_MATKEY_SPECULAR_FACTOR);
+    auto ior =                  probeMaterialProperty<Float>(material, AI_MATKEY_REFRACTI);
+
+    // blender has principled brdf approximations for wavefront mtl files we can use
+    // the following is therefore heavily relying on the blender wavefront import code
+    
+    // if there was a wavefront mtl, then assimp saves it
+    auto objIllum =             probeMaterialProperty<int>(material, AI_MATKEY_OBJ_ILLUM);
+
+
+    if (objIllum.has_value()) {
+
+        std::cout << "big lmao ILLUM: " << objIllum.value() << std::endl;
+
+        bool do_highlight = false;
+        bool do_transparency = false;
+        bool do_reflection = false;
+        bool do_glass = false;
+
+        switch (objIllum.value()) {
+        case 1:
+            /* Base color on, ambient on. */
+            break;
+        case 2: {
+            /* Highlight on. */
+            do_highlight = true;
+            break;
+        }
+        case 3: {
+            /* Reflection on and Ray trace on. */
+            do_reflection = true;
+            break;
+        }
+        case 4: {
+            /* Transparency: Glass on, Reflection: Ray trace on. */
+            do_glass = true;
+            do_reflection = true;
+            do_transparency = true;
+            break;
+        }
+        case 5: {
+            /* Reflection: Fresnel on and Ray trace on. */
+            do_reflection = true;
+            break;
+        }
+        case 6: {
+            /* Transparency: Refraction on, Reflection: Fresnel off and Ray trace on. */
+            do_reflection = true;
+            do_transparency = true;
+            break;
+        }
+        case 7: {
+            /* Transparency: Refraction on, Reflection: Fresnel on and Ray trace on. */
+            do_reflection = true;
+            do_transparency = true;
+            break;
+        }
+        case 8: {
+            /* Reflection on and Ray trace off. */
+            do_reflection = true;
+            break;
+        }
+        case 9: {
+            /* Transparency: Glass on, Reflection: Ray trace off. */
+            do_glass = true;
+            do_reflection = false;
+            do_transparency = true;
+            break;
+        }
+        default: {
+            std::cerr << "Warning! illum value = " << objIllum.value()
+                << "is not supported by the Principled-BSDF shader." << std::endl;
+            break;
+        }
+        }
+        
+
+        /* Approximations for trying to map obj/mtl material model into
+        * Principled BSDF: */
+        /* Specular: average of Ks components. */
+        float tmpSpecular = -1;
+        if (ks.has_value()) {
+            tmpSpecular = (ks.value()[0] + ks.value()[1] + ks.value()[2]) / 3;
+        }
+        else {
+            tmpSpecular = do_highlight ? 1.0f : 0.0f;
+        }
+
+        /* Roughness: map 0..1000 range to 1..0 and apply non-linearity. */
+        if (!roughness.has_value()) {
+            if (!shininess.has_value()) {
+                roughness = std::make_optional<Float>(do_highlight ? 0.0f : 1.0f);
+            }
+            else {
+                float clamped_ns = std::max(0.0f, std::min(1000.0f, shininess.value()));
+                roughness = std::make_optional<Float>(1.0f - sqrt(clamped_ns / 1000.0f));
+            }
+        }
+
+        /* Metallic: average of `Ka` components. */
+        if (ka.has_value() && !metallic.has_value()) {
+            metallic = std::make_optional<Float>((ka.value()[0] + ka.value()[1] + ka.value()[2]) / 3);
+        }
+        if (!metallic.has_value()) {
+            if (do_reflection) {
+                metallic = std::make_optional<Float>(1.0f);
+            }
+            else {
+                metallic = std::make_optional<Float>(0.0f);
+            }
+        }
+
+        if (!ior.has_value()) {
+            if (do_transparency) {
+                ior = std::make_optional<Float>(1.0f);
+            }
+            if (do_glass) {
+                ior = std::make_optional<Float>(1.5f);
+            }
+        }
+        if (do_transparency && !opacity.has_value()) {
+            opacity = std::make_optional<Float>(1.0f);
+        }
+
+    }
+    
+    
 
     set_if(kd, brdf.base_color.value);
     set_if(baseColor, brdf.base_color.value);
@@ -129,6 +259,7 @@ struct PrincipledBRDF {
     set_if(sheenFactor, brdf.sheen.value);
     set_if(clearCoat, brdf.clearcoat.value);
     set_if(clearCoatRoughness, brdf.clearcoat_gloss.value);
+    set_if(ior, brdf.eta.value);
 
     // Get all possible texture paths (these are all optional)
     auto diffuseTexture =       probeMaterialTexture(material, aiTextureType_DIFFUSE);
@@ -220,7 +351,13 @@ XMLElement* toXML(XMLDocument& doc, const PrincipledBRDF& brdf){
   element->InsertEndChild(toXML(doc, brdf.roughness));
   element->InsertEndChild(toXML(doc, brdf.anisotropic));
   element->InsertEndChild(toXML(doc, brdf.metallic));
-  element->InsertEndChild(toXML(doc, brdf.specular));
+  // mitsuba will not take specular and eta at the same time.
+  if (brdf.eta.value > 0.9) {
+    element->InsertEndChild(toXML(doc, brdf.eta));
+  }
+  else {
+    element->InsertEndChild(toXML(doc, brdf.specular));
+  }
   element->InsertEndChild(toXML(doc, brdf.sheen));
   element->InsertEndChild(toXML(doc, brdf.sheen_tint));
   element->InsertEndChild(toXML(doc, brdf.flatness));
