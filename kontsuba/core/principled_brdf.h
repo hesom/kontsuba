@@ -125,31 +125,12 @@ struct PrincipledBRDF {
     auto specularFactor =       probeMaterialProperty<Float>(material, AI_MATKEY_SPECULAR_FACTOR);
     auto ior =                  probeMaterialProperty<Float>(material, AI_MATKEY_REFRACTI);
 
-    /*
-    std::cout << "-------------------------------------------" << std::endl;
-    std::cout << "shininess:"          << (shininess ? shininess.value() : -3.14160000005f) << std::endl;
-    std::cout << "opacity:"          << (opacity ? opacity.value() : -3.14160000005f) << std::endl;
-    std::cout << "roughness:"          << (roughness ? roughness.value() : -3.14160000005f) << std::endl;
-    std::cout << "metallic:"          << (metallic ? metallic.value() : -3.14160000005f) << std::endl;
-    std::cout << "sheenFactor:"          << (sheenFactor ? sheenFactor.value() : -3.14160000005f) << std::endl;
-    std::cout << "anisotropic:"          << (anisotropic ? anisotropic.value() : -3.14160000005f) << std::endl;
-    std::cout << "clearCoat:"          << (clearCoat ? clearCoat.value() : -3.14160000005f) << std::endl;
-    std::cout << "clearCoatRoughness:"          << (clearCoatRoughness ? clearCoatRoughness.value() : -3.14160000005f) << std::endl;
-    std::cout << "specularFactor:"          << (specularFactor ? specularFactor.value() : -3.14160000005f) << std::endl;
-    */
-
-    // assimp loads for wavefront files: illum = 0 (noShading), = 1 (Gouraud) and = 2 (Phong)
-    // blender has principled brdf approximations for = 2 (Phong) models we can use
+    // blender has principled brdf approximations for wavefront mtl files we can use
     // the following is therefore heavily relying on the blender wavefront import code
-    // blender marks values that aren't actually in the mtl as negative, we got std::optional
     
-    // get potentially interesting values (if they exist) for the conversion
+    // if there was a wavefront mtl, then assimp saves it
     auto objIllum =             probeMaterialProperty<int>(material, AI_MATKEY_OBJ_ILLUM);
-    //objIllum = std::nullopt;
 
-    if (ior.has_value()) {
-        std::cout << "EVA VALUE!!!! " << ior.value() << std::endl;
-    }
 
     if (objIllum.has_value()) {
 
